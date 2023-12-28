@@ -11,7 +11,7 @@
 #include <vulkan/vulkan.h>
 #include <vma/vk_mem_alloc.h>
 
-#include <ESDL_EventHandler.hpp>
+#include <ESDL/ESDL_EventHandler.hpp>
 #include <mat4x4/mat4x4.hpp>
 #include <SDL2/SDL_image.h>
 
@@ -23,7 +23,7 @@
 	- `SDL_CreateWindow(..., SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | ...)`
 	- Create an instance of `EVK::Devices`
 	- Create an array of `EVK::ImageBlueprint`s, the indices of the `EVK::ImageBlueprint`s in this array will correspond to the indices of the resulting corresponding image structures created in the `EVK::Interface` instance, which are the indices used in image descriptors.
-	- Create an instance of `EVL::Interface`
+	- Create an instance of `EVK::Interface`
 	- Fill required vertex and index buffers with `Vulkan::FillVertexBuffer` / `Vulkan::FillIndexBuffer`
  
  In the render loop:

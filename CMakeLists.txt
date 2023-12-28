@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
+set(CMAKE_INSTALL_PREFIX "/Users/eprager/local")
 
 file(GLOB_RECURSE HEADERS
 	 RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -21,17 +22,14 @@ set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
 
 target_include_directories(${PROJECT_NAME} PUBLIC
 						   "${CMAKE_CURRENT_SOURCE_DIR}/include/"
-						   "/usr/local/include/"
-                           "/usr/local/include/mat4x4/"
-                           "/usr/local/include/ESDL/"
-                           "/usr/local/include/vulkan/"
-                           "/usr/local/include/vma/"
+						   "/Users/eprager/local/include/"
+                           "/usr/local/include/"
 						   "/opt/local/include/"
 						   "/opt/local/include/SDL2/"
 						   )
 
 target_link_directories(${PROJECT_NAME} PUBLIC
-						"/usr/local/lib/"
+						"/Users/eprager/local/lib/"
 						"/opt/local/lib/"
 						)
 
