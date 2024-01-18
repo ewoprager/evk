@@ -2,13 +2,13 @@
 #define EVK_hpp
 
 //#define MSAA
-//#define MAKE_ASSERTIONS
 
 #include <iostream>
+#include <assert.h>
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_vulkan.h>
-#include <vulkan/vulkan.h>
+#include <MoltenVK/mvk_vulkan.h>
 #include <vma/vk_mem_alloc.h>
 
 #include <ESDL/ESDL_EventHandler.hpp>
@@ -22,7 +22,7 @@
 	- `SDL_Init(...)`
 	- `SDL_CreateWindow(..., SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | ...)`
 	- Create an instance of `EVK::Devices`
-	- Create an array of `EVK::ImageBlueprint`s, the indices of the `EVK::ImageBlueprint`s in this array will correspond to the indices of the resulting corresponding image structures created in the `EVK::Interface` instance, which are the indices used in image descriptors.
+	- Create an array of `EVK::IImageBlueprint`s, the indices of the `EVK::IImageBlueprint`s in this array will correspond to the indices of the resulting corresponding image structures created in the `EVK::Interface` instance, which are the indices used in image descriptors.
 	- Create an instance of `EVK::Interface`
 	- Fill required vertex and index buffers with `Vulkan::FillVertexBuffer` / `Vulkan::FillIndexBuffer`
  
@@ -42,7 +42,7 @@
 		- Finish the pass with `EVK::Interface::CmdEndRenderPass()`, or `EVK::Interface::EndFinalRenderPassAndFrame()` for the final one
  
  Cleaning up:
-	- `vkDeviceWaitIdle(Vulkan::GetLogicalDevice())`
+	- `vkDeviceWaitIdle(EVK::Interface::GetLogicalDevice())`
 	- Destroy your `EVK::Interface` instance
 	- `SDL_DestroyWindow(<your SDL_Window pointer>)`
  */
@@ -68,17 +68,39 @@ struct QueueFamilyIndices {
 
 //VkFormat SDLPixelFormatToVulkanFormat(const SDL_PixelFormatEnum &sdlPixelFormat);
 
-struct UniformBufferObject {
-	UniformBufferObject(){
-		dynamicRepeats = 1;
+struct VertexBufferObject {
+	VkBuffer bufferHandle;
+	VkDeviceSize offset;
+	VmaAllocation allocation;
+	
+	void CleanUp(const VmaAllocator &allocator){
+		vmaDestroyBuffer(allocator, bufferHandle, allocation);
 	}
+};
+struct IndexBufferObject {
+	VkBuffer bufferHandle;
+	VkDeviceSize offset;
+	VmaAllocation allocation;
+	uint32_t indexCount;
+	
+	void CleanUp(const VmaAllocator &allocator){
+		vmaDestroyBuffer(allocator, bufferHandle, allocation);
+	}
+};
+
+struct UniformBufferObject {
+	UniformBufferObject(){}
 	
 	VkBuffer buffersFlying[MAX_FRAMES_IN_FLIGHT];
 	VmaAllocation allocationsFlying[MAX_FRAMES_IN_FLIGHT];
 	VmaAllocationInfo allocationInfosFlying[MAX_FRAMES_IN_FLIGHT];
 	VkDeviceSize size;
-	int dynamicRepeats; // not a dynamic UBO unless this is more than 1
-	VkDeviceSize dynamicAlignment;
+	
+	struct Dynamic {
+		int repeatsN;
+		VkDeviceSize alignment;
+	};
+	std::optional<Dynamic> dynamic;
 	
 	void CleanUp(const VmaAllocator &allocator){
 		for(int i=0; i<MAX_FRAMES_IN_FLIGHT; i++) vmaDestroyBuffer(allocator, buffersFlying[i], allocationsFlying[i]);
@@ -122,32 +144,46 @@ struct BufferedRenderPass {
 	}
 };
 struct LayeredBufferedRenderPass {
-	LayeredBufferedRenderPass(const int &_layersN) : layersN(_layersN){
-		layerImageViews = (VkImageView *)malloc(_layersN*sizeof(VkImageView));
-		frameBuffersFlying = (VkFramebuffer *)malloc(MAX_FRAMES_IN_FLIGHT*_layersN*sizeof(VkFramebuffer));
+	LayeredBufferedRenderPass(){}
+	LayeredBufferedRenderPass(int layersN) {
+		layers = std::vector<Layer>(layersN);
 	}
 	
 	uint32_t width, height;
-	int layersN;
 	VkRenderPass renderPass;
-	VkImageView *layerImageViews;
-	VkFramebuffer *frameBuffersFlying;
+	
+	struct Layer {
+		VkImageView imageView;
+		VkFramebuffer frameBuffersFlying[MAX_FRAMES_IN_FLIGHT];
+		
+		void CleanUp(const VkDevice &logicalDevice){
+			vkDestroyImageView(logicalDevice, imageView, nullptr);
+			for(int i=0; i<MAX_FRAMES_IN_FLIGHT; i++){
+				vkDestroyFramebuffer(logicalDevice, frameBuffersFlying[i], nullptr);
+			}
+		}
+	};
+	std::vector<Layer> layers;
 	
 	void CleanUp(const VkDevice &logicalDevice){
 		vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
-		for(int i=0; i<layersN; i++) vkDestroyImageView(logicalDevice, layerImageViews[i], nullptr);
-		free(layerImageViews);
-		for(int i=0; i<MAX_FRAMES_IN_FLIGHT*layersN; i++) vkDestroyFramebuffer(logicalDevice, frameBuffersFlying[i], nullptr);
-		free(frameBuffersFlying);
+		for(Layer &layer : layers) layer.CleanUp(logicalDevice);
 	}
 };
 
 class Devices {
 public:
-	Devices(SDL_Window *const &_sdlWindowPtr);
+	Devices(SDL_Window *_sdlWindowPtr);
+	Devices() = delete;
+	Devices(const Devices &) = delete;
+	Devices &operator=(const Devices &) = delete;
+	Devices(Devices &&) = default;
+	Devices &operator=(Devices &&) = default;
+	~Devices();
+	
 	
 	// shader modules
-	VkShaderModule CreateShaderModule(const char *const &filename) const;
+	VkShaderModule CreateShaderModule(const char *filename) const;
 	
 	VkFormatProperties GetFormatProperties(const VkFormat &format) const {
 		VkFormatProperties ret;
@@ -162,7 +198,7 @@ public:
 #endif
 	
 	uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
-	VkFormat FindSupportedFormat(const VkFormat *const &candidates, const int &n, VkImageTiling tiling, VkFormatFeatureFlags features) const;
+	VkFormat FindSupportedFormat(const VkFormat *candidates, int n, const VkImageTiling &tiling, const VkFormatFeatureFlags &features) const;
 	VkFormat FindDepthFormat() const;
 	
 	SwapChainSupportDetails QuerySwapChainSupport() const;
@@ -191,41 +227,33 @@ private:
 	friend class Interface;
 };
 
-struct ImageBlueprint {
+struct IImageBlueprint {
 private:
 	virtual void Build(int index, Interface &interface){}
 	
 	friend class Interface;
 };
-struct PNGImageBlueprint : public ImageBlueprint {
-	PNGImageBlueprint(const char *_imageFilename) : imageFilename(strdup(_imageFilename)) {}
-	~PNGImageBlueprint(){
-		free(imageFilename);
-	}
+struct PNGImageBlueprint : public IImageBlueprint {
+	PNGImageBlueprint(std::string _imageFilename) : imageFilename(_imageFilename) {}
 	
 private:
-	char *imageFilename;
+	std::string imageFilename;
 	
 	void Build(int index, Interface &interface) override;
 	
 	friend class Interface;
 };
-struct CubemapPNGImageBlueprint : public ImageBlueprint {
-	CubemapPNGImageBlueprint(const char *_imageFilenames[6]){
-		for(int i=0; i<6; i++) imageFilenames[i] = strdup(_imageFilenames[i]);
-	}
-	~CubemapPNGImageBlueprint(){
-		for(int i=0; i<6; i++) free(imageFilenames[i]);
-	}
+struct CubemapPNGImageBlueprint : public IImageBlueprint {
+	CubemapPNGImageBlueprint(std::array<std::string, 6> _imageFilenames) : imageFilenames(_imageFilenames) {}
 	
 private:
-	char *imageFilenames[6];
+	std::array<std::string, 6> imageFilenames;
 	
 	void Build(int index, Interface &interface) override;
 	
 	friend class Interface;
 };
-struct ManualImageBlueprint : public ImageBlueprint {
+struct ManualImageBlueprint : public IImageBlueprint {
 	ManualImageBlueprint(const VkImageCreateInfo &_imageCI, const VkImageViewType &_imageViewType, const VkMemoryPropertyFlags &_properties, const VkImageAspectFlags &_aspectFlags) : imageCI(_imageCI), imageViewType(_imageViewType), properties(_properties), aspectFlags(_aspectFlags) {}
 	
 private:
@@ -238,6 +266,7 @@ private:
 	
 	friend class Interface;
 };
+
 enum class DescriptorType {
 	UBO,
 	SBO,
@@ -250,34 +279,40 @@ struct DescriptorBlueprint {
 	DescriptorType type;
 	uint32_t binding;
 	VkShaderStageFlags stageFlags;
-	int count;
-	int *indicesA;
-	int *indicesB;
+	std::vector<int> indicesExtra;
+	std::vector<int> indicesExtra2;
+	/*
+	 Usage of indicesExtra:
+	 - UBO: {ubo index}
+	 - SBO: {sbo index, flight offset}
+	 - textureImage: {textureImage indices...}
+	 - textureSampler: {textureSampler indices...}
+	 - combinedImageSampler: {textureImage indices...}
+	 - storageImage: {textureImage indices...}
+	 Usage of indicesExtra2:
+	 - combinedImageSampler: {textureSampler indices...}
+	 */
 };
-struct DescriptorSetBlueprint {
-	int descriptorsN;
-	DescriptorBlueprint *descriptorBlueprints;
-};
+
+using DescriptorSetBlueprint = std::vector<DescriptorBlueprint>;
+
 struct PipelineBlueprint {
-	int descriptorSetsN;
-	DescriptorSetBlueprint *descriptorSetBlueprints;
+	std::vector<DescriptorSetBlueprint> descriptorSetBlueprints;
 	
-	int pushConstantRangesN;
-	VkPushConstantRange *pushConstantRanges;
+	std::vector<VkPushConstantRange> pushConstantRanges;
 };
 struct GraphicsPipelineBlueprint {
 	PipelineBlueprint pipelineBlueprint;
 	
-	uint32_t stageCount;
-	VkPipelineShaderStageCreateInfo *shaderStageCIs;
+	std::vector<VkPipelineShaderStageCreateInfo> shaderStageCIs;
 	VkPipelineVertexInputStateCreateInfo vertexInputStateCI;
 	VkPipelineRasterizationStateCreateInfo rasterisationStateCI;
 	VkPipelineMultisampleStateCreateInfo multisampleStateCI;
 	VkPipelineColorBlendStateCreateInfo colourBlendStateCI;
 	VkPipelineDepthStencilStateCreateInfo depthStencilStateCI;
 	VkPipelineDynamicStateCreateInfo dynamicStateCI;
-	int bufferedRenderPassIndex; //=-1
-	int layeredBufferedRenderPassIndex; //=-1
+	std::optional<int> bufferedRenderPassIndex;
+	std::optional<int> layeredBufferedRenderPassIndex;
 };
 struct ComputePipelineBlueprint {
 	PipelineBlueprint pipelineBlueprint;
@@ -286,7 +321,7 @@ struct ComputePipelineBlueprint {
 };
 struct UniformBufferObjectBlueprint {
 	VkDeviceSize size;
-	int dynamicRepeats; //=1
+	std::optional<int> dynamicRepeats;
 };
 struct StorageBufferObjectBlueprint {
 	VkDeviceSize size;
@@ -295,46 +330,30 @@ struct StorageBufferObjectBlueprint {
 };
 struct BufferedRenderPassBlueprint {
 	VkRenderPassCreateInfo renderPassCI;
-	int textureImagesN;
-	int *targetTextureImageIndices;
-	uint32_t width; // if either with or height is 0, the buffer resizes with the window
-	uint32_t height; //
+	std::vector<int> targetTextureImageIndices;
+	
+	// if either with or height is 0, the buffer resizes with the window
+	uint32_t width, height;
 };
 struct LayeredBufferedRenderPassBlueprint {
 	VkRenderPassCreateInfo renderPassCI;
 	int targetTextureImageIndex;
-	uint32_t width;
-	uint32_t height;
+	uint32_t width, height;
 	int layersN;
 	VkFormat imageFormat;
 	VkImageAspectFlags imageAspectFlags;
 };
 struct InterfaceBlueprint {
-	Devices devices;
+	const Devices &devices;
 	
-	int uniformBufferObjectsN;
-	UniformBufferObjectBlueprint *uboBlueprints;
-	
-	int storageBufferObjectsN;
-	StorageBufferObjectBlueprint *sboBlueprints;
-	
-	int textureSamplersN;
-	VkSamplerCreateInfo *samplerBlueprints;
-	
-	int bufferedRenderPassesN;
-	BufferedRenderPassBlueprint *bufferedRenderPassBlueprints;
-	
-	int layeredBufferedRenderPassesN;
-	LayeredBufferedRenderPassBlueprint *layeredBufferedRenderPassBlueprints;
-	
-	int graphicsPipelinesN;
-	GraphicsPipelineBlueprint *graphicsPipelineBlueprints;
-	
-	int computePipelinesN;
-	ComputePipelineBlueprint *computePipelineBlueprints;
-	
-	int textureImagesN;
-	ImageBlueprint **imageBlueprintPtrs;
+	std::vector<UniformBufferObjectBlueprint> uboBlueprints;
+	std::vector<StorageBufferObjectBlueprint> sboBlueprints;
+	std::vector<VkSamplerCreateInfo> samplerBlueprints;
+	std::vector<BufferedRenderPassBlueprint> bufferedRenderPassBlueprints;
+	std::vector<LayeredBufferedRenderPassBlueprint> layeredBufferedRenderPassBlueprints;
+	std::vector<GraphicsPipelineBlueprint> graphicsPipelineBlueprints;
+	std::vector<ComputePipelineBlueprint> computePipelineBlueprints;
+	std::vector<std::shared_ptr<IImageBlueprint>> imageBlueprintPtrs;
 	
 	int vertexBuffersN;
 	int indexBuffersN;
@@ -347,7 +366,7 @@ class Interface {
 	class GraphicsPipeline;
 	class ComputePipeline;
 public:
-	Interface(const InterfaceBlueprint &info);
+	Interface(InterfaceBlueprint &info);
 	~Interface();
 	
 	// -----------------
@@ -355,62 +374,76 @@ public:
 	// -----------------
 	
 	// ----- Filling buffers -----
-	void FillVertexBuffer(const int &vertexBufferIndex, void *const &vertices, const VkDeviceSize &size, const VkDeviceSize &offset=0);
-	void FillIndexBuffer(const int &indexBufferIndex, uint32_t *const &indices, const size_t &indexCount, const VkDeviceSize &offset=0);
+	void FillVertexBuffer(int vertexBufferIndex, void *vertices, const VkDeviceSize &size, const VkDeviceSize &offset=0);
+	void FillIndexBuffer(int indexBufferIndex, uint32_t *indices, size_t indexCount, const VkDeviceSize &offset=0);
+	void FillStorageBuffer(int storageBufferIndex, void *data);
 	
 	
 	// ----- Modifying UBO data -----
-	template <typename T> T *GetUniformBufferObjectPointer(const int &uniformBufferObjectIndex) const {
+	template <typename T> T *GetUniformBufferObjectPointer(int uniformBufferObjectIndex) const {
 		return (T *)uniformBufferObjects[uniformBufferObjectIndex].allocationInfosFlying[currentFrame].pMappedData;
 	}
-	template <typename T> void GetUniformBufferObjectPointers(const int &uniformBufferObjectIndex, T **out) const {
-		if(uniformBufferObjects[uniformBufferObjectIndex].dynamicRepeats > 1){
+	template <typename T> std::vector<T *> GetUniformBufferObjectPointers(int uniformBufferObjectIndex) const {
+		std::vector<T *> ret {};
+		if(uniformBufferObjects[uniformBufferObjectIndex].dynamic){
+			const int number = uniformBufferObjects[uniformBufferObjectIndex].dynamic->repeatsN;
+			ret.resize(number);
 			uint8_t *start = (uint8_t *)uniformBufferObjects[uniformBufferObjectIndex].allocationInfosFlying[currentFrame].pMappedData;
-			for(int i=0; i<uniformBufferObjects[uniformBufferObjectIndex].dynamicRepeats; i++){
-				out[i] = (T *)start;
-				start += uniformBufferObjects[uniformBufferObjectIndex].dynamicAlignment;
+			for(T* &ptr : ret){
+				ptr = (T *)start;
+				start += uniformBufferObjects[uniformBufferObjectIndex].dynamic->alignment;
 			}
-		} else out[0] = (T *)uniformBufferObjects[uniformBufferObjectIndex].allocationInfosFlying[currentFrame].pMappedData;
+		} else {
+			ret.push_back((T *)uniformBufferObjects[uniformBufferObjectIndex].allocationInfosFlying[currentFrame].pMappedData);
+		}
+		return ret;
 	}
 	
 	
 	// ---------------------
 	// ----- Pipelines -----
 	// ---------------------
-	GraphicsPipeline &GP(const int &index) const { return *graphicsPipelines[index]; }
-	ComputePipeline &CP(const int &index) const { return *computePipelines[index]; }
+	GraphicsPipeline &GP(int index) const { return *graphicsPipelines[index]; }
+	ComputePipeline &CP(int index) const { return *computePipelines[index]; }
 	
 	
 	// ------------------------------------
 	// ----- Frames and render passes -----
 	// ------------------------------------
+	// ----- Graphics commands -----
 	bool BeginFrame();
-	//void CmdBeginRenderPass(const VkRenderPassBeginInfo *const &renderPassBeginInfo, const VkSubpassContents &subpassContents);
-	void CmdBeginBufferedRenderPass(const int &bufferedRenderPassIndex, const VkSubpassContents &subpassContents, int clearValueCount, const VkClearValue *const &clearValues);
-	void CmdBeginLayeredBufferedRenderPass(const int &layeredBufferedRenderPassIndex, const VkSubpassContents &subpassContents, int clearValueCount, const VkClearValue *const &clearValues, const int &layer);
+	void CmdBeginBufferedRenderPass(int bufferedRenderPassIndex, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues);
+	void CmdBeginLayeredBufferedRenderPass(int layeredBufferedRenderPassIndex, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues, int layer);
 	void CmdEndRenderPass();
 	void BeginFinalRenderPass();
+	void EndFinalRenderPassAndFrame(bool waitForCompute=false);
 	// ----- Render pass commands -----
-	void CmdBindVertexBuffer(const uint32_t &binding, const int &index);
-	void CmdBindIndexBuffer(const int &index, const VkIndexType &type);
-	void CmdDraw(const uint32_t &vertexCount, const uint32_t &instanceCount=1, const uint32_t &firstVertex=0, const uint32_t &firstInstance=0);
-	void CmdDrawIndexed(const uint32_t &indexCount, const uint32_t &instanceCount=1, const uint32_t &firstIndex=0, const int32_t &vertexOffset=0, const uint32_t &firstInstance=0);
-	void CmdSetDepthBias(const float &constantFactor, const float &clamp, const float &slopeFactor);
-	void CmdDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ);
+	void CmdBindVertexBuffer(uint32_t binding, int index);
+	void CmdBindStorageBufferAsVertexBuffer(uint32_t binding, int index);
+	void CmdBindIndexBuffer(int index, const VkIndexType &type);
+	void CmdDraw(uint32_t vertexCount, uint32_t instanceCount=1, uint32_t firstVertex=0, uint32_t firstInstance=0);
+	void CmdDrawIndexed(uint32_t indexCount, uint32_t instanceCount=1, uint32_t firstIndex=0, int32_t vertexOffset=0, uint32_t firstInstance=0);
+	void CmdSetDepthBias(float constantFactor, float clamp, float slopeFactor);
 	
-	void EndFinalRenderPassAndFrame();
+	// ----- Compute commands -----
+	void BeginCompute();
+	void EndCompute();
+	void CmdDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ);
 	
 	
 	// ----- Getters -----
 	const uint32_t &GetExtentWidth() const { return swapChainExtent.width; }
 	const uint32_t &GetExtentHeight() const { return swapChainExtent.height; }
-	const bool &GetVertexBufferCreated(const int &index) const { return vertexBuffersCreated[index]; }
-	const bool &GetIndexBufferCreated(const int &index) const { return indexBuffersCreated[index]; }
-	const VkDeviceSize &GetUniformBufferObjectDynamicAlignment(const int &index) const { return uniformBufferObjects[index].dynamicAlignment; }
-	const int &GetUniformBufferObjectCount(){ return info.uniformBufferObjectsN; }
-	const uint32_t &GetIndexBufferCount(const int &index) const { return indexBufferCounts[index]; }
-	const VkRenderPass &GetBufferedRenderPassHandle(const int &index) const { return bufferedRenderPasses[index].renderPass; }
-	const VkRenderPass &GetLayeredBufferedRenderPassHandle(const int &index) const { return layeredBufferedRenderPasses[index].renderPass; }
+	bool GetVertexBufferCreated(int index) const { return (bool)vertexBufferObjects[index]; }
+	bool GetIndexBufferCreated(int index) const { return (bool)indexBufferObjects[index]; }
+	std::optional<VkDeviceSize> GetUniformBufferObjectDynamicAlignment(int index) const { return uniformBufferObjects[index].dynamic ? uniformBufferObjects[index].dynamic.value().alignment : std::optional<VkDeviceSize>(); }
+	size_t GetUniformBufferObjectCount(){ return uniformBufferObjects.size(); }
+	uint32_t GetIndexBufferCount(int index) const {
+		if(!indexBufferObjects[index]) return 0;
+		return indexBufferObjects[index]->indexCount;
+	}
+	const VkRenderPass &GetBufferedRenderPassHandle(int index) const { return bufferedRenderPasses[index].renderPass; }
+	const VkRenderPass &GetLayeredBufferedRenderPassHandle(int index) const { return layeredBufferedRenderPasses[index].renderPass; }
 	const VkDevice &GetLogicalDevice() const { return devices.logicalDevice; }
 	
 	
@@ -418,27 +451,15 @@ public:
 	void FramebufferResizeCallback(SDL_Event event){ framebufferResized = true; }
 	
 private:
-	struct {
-		SDL_Window *sdlWindowPtr;
-		int uniformBufferObjectsN;
-		int storageBufferObjectsN;
-		int textureImagesN;
-		int textureSamplersN;
-		int bufferedRenderPassesN;
-		int layeredBufferedRenderPassesN;
-		int vertexBuffersN;
-		int indexBuffersN;
-		int graphicsPipelinesN;
-		int computePipelinesN;
-	} info;
+	SDL_Window *sdlWindowPtr;
 	
-	Devices devices;
+	const Devices &devices;
 	
 	VkSwapchainKHR swapChain;
 	
-	VkImage *swapChainImages;
-	VkImageView *swapChainImageViews;
-	VkFramebuffer *swapChainFramebuffers;
+	std::vector<VkImage> swapChainImages;
+	std::vector<VkImageView> swapChainImageViews;
+	std::vector<VkFramebuffer> swapChainFramebuffers;
 	
 	struct ResisingBRP {
 		int index;
@@ -448,67 +469,61 @@ private:
 		int index;
 		ManualImageBlueprint blueprint;
 	};
-	int resisingBRPsN;
-	ResisingBRP *resisingBRPs;
-	int resisingImagesN;
-	ResisingImage *resisingImages;
+	std::vector<ResisingBRP> resisingBRPs;
+	std::vector<ResisingImage> resisingImages;
 	
 	uint32_t imageCount;
 	VkFormat swapChainImageFormat;
 	VkExtent2D swapChainExtent;
 	VkCommandPool commandPool;
 	VkRenderPass renderPass;
-	void CreateFramebuffers(const VkDevice &logicalDevice, const VkRenderPass &renderPass, const uint32_t &imageCount, const uint32_t &extentWidth, const uint32_t &extentHeight, VkImageView **attachmentPtrs, const uint32_t &attachmentCount);
+	//void CreateFramebuffers(const VkDevice &logicalDevice, const VkRenderPass &renderPass, uint32_t imageCount, uint32_t extentWidth, uint32_t extentHeight, std::vectorVkImageView **attachmentPtrs, const uint32_t &attachmentCount);
 	bool framebufferResized = false;
 	
-	void FillDeviceLocalBuffer(VkBuffer &bufferHandle, VmaAllocation &allocation, void *const &data, const VkDeviceSize &size, const VkDeviceSize &offset, const VkBufferUsageFlags &usageFlags);
+	void CreateAndFillDeviceLocalBuffer(VkBuffer &bufferHandle, VmaAllocation &allocation, void *data, const VkDeviceSize &size, const VkBufferUsageFlags &usageFlags);
+	void FillExistingDeviceLocalBuffer(VkBuffer bufferHandle, void *data, const VkDeviceSize &size);
 	
 	// a command buffer for each flying frame
 	VkCommandBuffer commandBuffersFlying[MAX_FRAMES_IN_FLIGHT];
+	VkCommandBuffer computeCommandBuffersFlying[MAX_FRAMES_IN_FLIGHT];
 	
 	// semaphores and fences for each flying frame
 	VkSemaphore imageAvailableSemaphoresFlying[MAX_FRAMES_IN_FLIGHT];
 	VkSemaphore renderFinishedSemaphoresFlying[MAX_FRAMES_IN_FLIGHT];
 	VkFence inFlightFencesFlying[MAX_FRAMES_IN_FLIGHT];
+	VkSemaphore computeFinishedSemaphoresFlying[MAX_FRAMES_IN_FLIGHT];
+	VkFence computeInFlightFencesFlying[MAX_FRAMES_IN_FLIGHT];
 	
 	// flying frames
 	uint32_t currentFrameImageIndex;
 	uint32_t currentFrame = 0;
 	
-	
 	// ----- structures -----
-	UniformBufferObject *uniformBufferObjects;
+	std::vector<UniformBufferObject> uniformBufferObjects;
 	void BuildUBO(int index, const UniformBufferObjectBlueprint &blueprint);
 	
-	StorageBufferObject *storageBufferObjects;
+	std::vector<StorageBufferObject> storageBufferObjects;
 	void BuildSBO(int index, const StorageBufferObjectBlueprint &blueprint);
 	
-	TextureImage *textureImages;
+	std::vector<TextureImage> textureImages;
 	void BuildTextureImageFromFile(int index, const PNGImageBlueprint &blueprint);
 	void BuildCubemapImageFromFiles(int index, const CubemapPNGImageBlueprint &blueprint);
 	void BuildTextureImage(int index, ManualImageBlueprint blueprint);
 	
-	VkSampler *textureSamplers;
+	std::vector<VkSampler> textureSamplers;
 	void BuildTextureSampler(int index, const VkSamplerCreateInfo &samplerCI);
 	
-	BufferedRenderPass *bufferedRenderPasses;
+	std::vector<BufferedRenderPass> bufferedRenderPasses;
 	bool BuildBufferedRenderPass(int index, const BufferedRenderPassBlueprint &blueprint); // returns if it resises with the window
 	
-	LayeredBufferedRenderPass *layeredBufferedRenderPasses;
+	std::vector<LayeredBufferedRenderPass> layeredBufferedRenderPasses;
 	void BuildLayeredBufferedRenderPass(int index, const LayeredBufferedRenderPassBlueprint &blueprint);
 	
 	// vertex buffers
-	bool *vertexBuffersCreated;
-	VkBuffer *vertexBufferHandles;
-	VkDeviceSize *vertexBufferOffsets;
-	VmaAllocation *vertexBufferAllocations;
+	std::vector<std::optional<VertexBufferObject>> vertexBufferObjects;
 	
 	// index buffers
-	bool *indexBuffersCreated;
-	VkBuffer *indexBufferHandles;
-	VkDeviceSize *indexBufferOffsets;
-	VmaAllocation *indexBufferAllocations;
-	uint32_t *indexBufferCounts;
+	std::vector<std::optional<IndexBufferObject>> indexBufferObjects;
 	
 	class Pipeline {
 	protected:
@@ -519,34 +534,28 @@ private:
 		Pipeline(Interface &_vulkan, const PipelineBlueprint &blueprint);
 		
 		~Pipeline(){
-			for(int i=0; i<descriptorSetsN; i++) delete descriptorSets[i];
-			free(pushConstantRanges);
-			free(descriptorSets);
-			free(descriptorSetLayouts);
-			free(descriptorSetsFlying);
 			vkDestroyDescriptorPool(vulkan.devices.logicalDevice, descriptorPool, nullptr);
 			vkDestroyPipeline(vulkan.devices.logicalDevice, pipeline, nullptr);
 			vkDestroyPipelineLayout(vulkan.devices.logicalDevice, layout, nullptr);
-			//vkDestroyShaderModule(vulkan.devices.logicalDevice, fragShaderModule, nullptr);
-			//vkDestroyShaderModule(vulkan.devices.logicalDevice, vertShaderModule, nullptr);
+			for(VkDescriptorSetLayout &dsl : descriptorSetLayouts){
+				vkDestroyDescriptorSetLayout(vulkan.devices.logicalDevice, dsl, nullptr);
+			}
 		}
 		
 		// ----- Methods to call after Init() -----
 		// Bind the pipeline for subsequent render calls
-		virtual void Bind(){}
+		virtual void Bind() {}
 		// Set which descriptor sets are bound for subsequent render calls
-		virtual void BindDescriptorSets(const int &first, const int &number, const uint32_t &dynamicOffsetCount=0, const int *const &dynamicOffsetNumbers=nullptr){}
+		virtual void BindDescriptorSets(int first, int number, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) {}
 		void UpdateDescriptorSets(); // have to do this every time any elements of any descriptors are changed, e.g. when an image view is re-created upon window resize
 		// Set push constant data
-		template <typename T> void CmdPushConstants(const int &index, T *const &data){
-#ifdef MAKE_ASSERTIONS
+		template <typename T> void CmdPushConstants(int index, T *data){
 			assert(pushConstantRanges[index].size == sizeof(T));
-#endif
 			vkCmdPushConstants(vulkan.commandBuffersFlying[vulkan.currentFrame], layout, pushConstantRanges[index].stageFlags, pushConstantRanges[index].offset, pushConstantRanges[index].size, data);
 		}
 		
 		// Get the handle of a descriptor set
-		DescriptorSet &DS(const int &index){ return *descriptorSets[index]; }
+		DescriptorSet &DS(int index){ return *descriptorSets[index]; }
 		
 	protected:
 		Interface &vulkan;
@@ -555,29 +564,27 @@ private:
 			class Descriptor;
 		public:
 			DescriptorSet(Pipeline &_pipeline, int _index, const DescriptorSetBlueprint &blueprint);
-			~DescriptorSet(){
-				for(int i=0; i<descriptorsN; i++) delete descriptors[i];
-				vkDestroyDescriptorSetLayout(pipeline.vulkan.devices.logicalDevice, pipeline.descriptorSetLayouts[index], nullptr);
-			}
+			~DescriptorSet(){}
 			
 			// For initialisation
 			void InitLayouts();
 			void InitConfigurations();
 			
-			const int &GetDescriptorCount() const { return descriptorsN; }
-			const Descriptor *const &GetDescriptor(const int &index){ return descriptors[index]; }
-			const bool &GetUBODynamic() const { return uboDynamic; }
-			const VkDeviceSize &GetUBODynamicAlignment() const { return uboDynamicAlignment; }
+			size_t GetDescriptorCount() const { return descriptors.size(); }
+			std::shared_ptr<Descriptor> GetDescriptor(int index) const { return descriptors[index]; }
+			bool GetUBODynamic() const { return uboDynamicAlignment.has_value(); }
+			const std::optional<VkDeviceSize> &GetUBODynamicAlignment() const { return uboDynamicAlignment; }
 			
 		private:
 			Pipeline &pipeline;
 			int index;
-			int descriptorsN = 0;
-			Descriptor **descriptors;
+			
+			std::vector<std::shared_ptr<Descriptor>> descriptors;
 			
 			// ubo info
-			bool uboDynamic = false;
-			VkDeviceSize uboDynamicAlignment;
+			std::optional<VkDeviceSize> uboDynamicAlignment;
+			
+			// this still relevent? \/\/\/
 			/*
 			 `index` is the index of this descriptor set's layout in 'Vulkan::RenderPipeline::descriptorSetLayouts',
 			 
@@ -587,15 +594,16 @@ private:
 			 `pipeline.descriptorSetNumber*flightIndex + pipeline.descriptorSetNumber - 1`
 			 are the indices of this descriptors flying sets in 'pipeline.descriptorSetsFlying'
 			 */
+			// /\/\/\
 			
 			class Descriptor {
 			public:
-				Descriptor(DescriptorSet &_descriptorSet, const uint32_t &_binding, const VkShaderStageFlags &_stageFlags) : descriptorSet(_descriptorSet), binding(_binding), stageFlags(_stageFlags) {}
+				Descriptor(DescriptorSet &_descriptorSet, uint32_t _binding, const VkShaderStageFlags &_stageFlags) : descriptorSet(_descriptorSet), binding(_binding), stageFlags(_stageFlags) {}
 				virtual ~Descriptor(){}
 				
 				virtual VkDescriptorSetLayoutBinding LayoutBinding() const = 0;
 				
-				virtual VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *const &imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *const &bufferInfoBuffer, int &bufferInfoBufferIndex, const int &flight) const = 0;
+				virtual VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const = 0;
 				
 				virtual VkDescriptorPoolSize PoolSize() const = 0;
 				
@@ -606,11 +614,11 @@ private:
 			};
 			class UBODescriptor : public Descriptor {
 			public:
-				UBODescriptor(DescriptorSet &_descriptorSet, const uint32_t &_binding, const VkShaderStageFlags &_stageFlags, const int &_index) : Descriptor(_descriptorSet, _binding, _stageFlags), index(_index) {}
+				UBODescriptor(DescriptorSet &_descriptorSet, uint32_t _binding, const VkShaderStageFlags &_stageFlags, int _index) : Descriptor(_descriptorSet, _binding, _stageFlags), index(_index) {}
 				
 				VkDescriptorSetLayoutBinding LayoutBinding() const override;
 				
-				VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *const &imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *const &bufferInfoBuffer, int &bufferInfoBufferIndex, const int &flight) const override;
+				VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
 				
 				VkDescriptorPoolSize PoolSize() const override;
 				
@@ -619,113 +627,83 @@ private:
 			};
 			class SBODescriptor : public Descriptor {
 			public:
-				SBODescriptor(DescriptorSet &_descriptorSet, const uint32_t &_binding, const VkShaderStageFlags &_stageFlags, const int &_index) : Descriptor(_descriptorSet, _binding, _stageFlags), index(_index) {}
+				SBODescriptor(DescriptorSet &_descriptorSet, uint32_t _binding, const VkShaderStageFlags &_stageFlags, int _index, int _flightOffset) : Descriptor(_descriptorSet, _binding, _stageFlags), index(_index), flightOffset(_flightOffset) {}
 				
 				VkDescriptorSetLayoutBinding LayoutBinding() const override;
 				
-				VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *const &imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *const &bufferInfoBuffer, int &bufferInfoBufferIndex, const int &flight) const override;
+				VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
 				
 				VkDescriptorPoolSize PoolSize() const override;
 				
 			private:
 				int index;
+				int flightOffset;
 			};
 			class TextureImagesDescriptor : public Descriptor {
 			public:
-				TextureImagesDescriptor(DescriptorSet &_descriptorSet, const uint32_t &_binding, const VkShaderStageFlags &_stageFlags, const int &_count, const int *const &_indices) : Descriptor(_descriptorSet, _binding, _stageFlags), count(_count) {
-					indices = (int *)malloc(_count*sizeof(int));
-					memcpy(indices, _indices, _count*sizeof(int));
-				}
-				~TextureImagesDescriptor(){
-					free(indices);
-				}
+				TextureImagesDescriptor(DescriptorSet &_descriptorSet, uint32_t _binding, const VkShaderStageFlags &_stageFlags, const std::vector<int> &_indices) : Descriptor(_descriptorSet, _binding, _stageFlags), indices(_indices) {}
 				
 				VkDescriptorSetLayoutBinding LayoutBinding() const override;
 				
-				VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *const &imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *const &bufferInfoBuffer, int &bufferInfoBufferIndex, const int &flight) const override;
+				VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
 				
 				VkDescriptorPoolSize PoolSize() const override;
 				
 			private:
-				int count;
-				int *indices;
+				std::vector<int> indices;
 			};
 			class TextureSamplersDescriptor : public Descriptor {
 			public:
-				TextureSamplersDescriptor(DescriptorSet &_descriptorSet, const uint32_t &_binding, const VkShaderStageFlags &_stageFlags, const int &_count, const int *const &_indices) : Descriptor(_descriptorSet, _binding, _stageFlags), count(_count) {
-					indices = (int *)malloc(_count*sizeof(int));
-					memcpy(indices, _indices, _count*sizeof(int));
-				}
-				~TextureSamplersDescriptor(){
-					free(indices);
-				}
+				TextureSamplersDescriptor(DescriptorSet &_descriptorSet, uint32_t _binding, const VkShaderStageFlags &_stageFlags, const std::vector<int> &_indices) : Descriptor(_descriptorSet, _binding, _stageFlags), indices(_indices) {}
 				
 				VkDescriptorSetLayoutBinding LayoutBinding() const override;
 				
-				VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *const &imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *const &bufferInfoBuffer, int &bufferInfoBufferIndex, const int &flight) const override;
+				VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
 				
 				VkDescriptorPoolSize PoolSize() const override;
 				
 			private:
-				int count;
-				int *indices;
+				std::vector<int> indices;
 			};
 			class CombinedImageSamplersDescriptor : public Descriptor {
 			public:
-				CombinedImageSamplersDescriptor(DescriptorSet &_descriptorSet, const uint32_t &_binding, const VkShaderStageFlags &_stageFlags, const int &_count, const int *const &_textureImageIndices, const int *const &_samplerIndices) : Descriptor(_descriptorSet, _binding, _stageFlags), count(_count) {
-					textureImageIndices = (int *)malloc(_count*sizeof(int));
-					samplerIndices = (int *)malloc(_count*sizeof(int));
-					memcpy(textureImageIndices, _textureImageIndices, _count*sizeof(int));
-					memcpy(samplerIndices, _samplerIndices, _count*sizeof(int));
-				}
-				~CombinedImageSamplersDescriptor(){
-					free(textureImageIndices);
-					free(samplerIndices);
+				CombinedImageSamplersDescriptor(DescriptorSet &_descriptorSet, uint32_t _binding, const VkShaderStageFlags &_stageFlags, const std::vector<int> &_textureImageIndices, const std::vector<int> &_samplerIndices) : Descriptor(_descriptorSet, _binding, _stageFlags), textureImageIndices(_textureImageIndices), samplerIndices(_samplerIndices) {
+					assert(_textureImageIndices.size() == _samplerIndices.size());
 				}
 				
 				VkDescriptorSetLayoutBinding LayoutBinding() const override;
 				
-				VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *const &imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *const &bufferInfoBuffer, int &bufferInfoBufferIndex, const int &flight) const override;
+				VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
 				
 				VkDescriptorPoolSize PoolSize() const override;
 				
 			private:
-				int count;
-				int *textureImageIndices;
-				int *samplerIndices;
+				std::vector<int> textureImageIndices;
+				std::vector<int> samplerIndices;
 			};
 			class StorageImagesDescriptor : public Descriptor {
 			public:
-				StorageImagesDescriptor(DescriptorSet &_descriptorSet, const uint32_t &_binding, const VkShaderStageFlags &_stageFlags, const int &_count, const int *const &_indices) : Descriptor(_descriptorSet, _binding, _stageFlags), count(_count) {
-					indices = (int *)malloc(_count*sizeof(int));
-					memcpy(indices, _indices, _count*sizeof(int));
-				}
-				~StorageImagesDescriptor(){
-					free(indices);
-				}
+				StorageImagesDescriptor(DescriptorSet &_descriptorSet, uint32_t _binding, const VkShaderStageFlags &_stageFlags, const std::vector<int> &_indices) : Descriptor(_descriptorSet, _binding, _stageFlags), indices(_indices) {}
 				
 				VkDescriptorSetLayoutBinding LayoutBinding() const override;
 				
-				VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *const &imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *const &bufferInfoBuffer, int &bufferInfoBufferIndex, const int &flight) const override;
+				VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
 				
 				VkDescriptorPoolSize PoolSize() const override;
 				
 			private:
-				int count;
-				int *indices;
+				std::vector<int> indices;
 			};
 		};
-		DescriptorSet **descriptorSets;
-		int descriptorSetsN;
-		VkDescriptorSetLayout *descriptorSetLayouts;
-		VkDescriptorSet *descriptorSetsFlying;
+		
+		std::vector<std::shared_ptr<DescriptorSet>> descriptorSets;
+		
+		std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
+		std::vector<VkDescriptorSet> descriptorSetsFlying;
 		VkDescriptorPool descriptorPool;
 		
-		VkPushConstantRange *pushConstantRanges;
-		int pushConstantRangesN;
+		std::vector<VkPushConstantRange> pushConstantRanges;
 		
-		//VkShaderModule vertShaderModule;
-		//VkShaderModule fragShaderModule;
 		VkPipelineLayout layout;
 		VkPipeline pipeline;
 	};
@@ -738,13 +716,13 @@ private:
 		}
 		
 		void Bind() override;
-		void BindDescriptorSets(const int &first, const int &number, const uint32_t &dynamicOffsetCount=0, const int *const &dynamicOffsetNumbers=nullptr) override;
+		void BindDescriptorSets(int first, int number, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) override;
 		
 	private:
 		VkShaderModule vertShaderModule;
 		VkShaderModule fragShaderModule;
 	};
-	GraphicsPipeline **graphicsPipelines;
+	std::vector<std::shared_ptr<GraphicsPipeline>> graphicsPipelines;
 	
 	class ComputePipeline : public Pipeline {
 	public:
@@ -754,12 +732,12 @@ private:
 		}
 		
 		void Bind() override;
-		void BindDescriptorSets(const int &first, const int &number, const uint32_t &dynamicOffsetCount=0, const int *const &dynamicOffsetNumbers=nullptr) override;
+		void BindDescriptorSets(int first, int number, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) override;
 		
 	private:
 		VkShaderModule shaderModule;
 	};
-	ComputePipeline **computePipelines;
+	std::vector<std::shared_ptr<ComputePipeline>> computePipelines;
 	
 	// Depth image
 	VkImage depthImage;
@@ -776,7 +754,7 @@ private:
 	VkCommandBuffer BeginSingleTimeCommands();
 	void EndSingleTimeCommands(VkCommandBuffer commandBuffer);
 	
-	void CreateImage(const VkImageCreateInfo &imageCI, VkMemoryPropertyFlags properties, VkImage& image, VmaAllocation& allocation);
+	void CreateImage(const VkImageCreateInfo &imageCI, VkMemoryPropertyFlags properties, VkImage &image, VmaAllocation &allocation);
 	VkImageView CreateImageView(const VkImageViewCreateInfo &imageViewCI);
 	void TransitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, VkImageSubresourceRange subresourceRange);
 	void GenerateMipmaps(VkImage image, VkFormat imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels);
@@ -791,9 +769,9 @@ private:
 	void RecreateSwapChain(){
 		// in case we are minimised:
 		int width, height;
-		SDL_GL_GetDrawableSize(info.sdlWindowPtr, &width, &height);
+		SDL_GL_GetDrawableSize(sdlWindowPtr, &width, &height);
 		while(width == 0 || height == 0){
-			SDL_GL_GetDrawableSize(info.sdlWindowPtr, &width, &height);
+			SDL_GL_GetDrawableSize(sdlWindowPtr, &width, &height);
 			SDL_WaitEvent(nullptr);
 		}
 		
@@ -812,7 +790,7 @@ private:
 		RecreateResisingBRPsAndImages();
 	}
 	
-	void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VmaAllocation& allocation, VmaAllocationInfo *const &allocationInfoDst=nullptr);
+	void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer &buffer, VmaAllocation &allocation, VmaAllocationInfo *allocationInfoDst=nullptr);
 	void CopyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 	void CopyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height);
 	

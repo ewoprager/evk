@@ -2,32 +2,35 @@
 
 namespace EVK {
 
-Interface::Pipeline::DescriptorSet::DescriptorSet(Pipeline &_pipeline, int _index, const DescriptorSetBlueprint &blueprint) : pipeline(_pipeline), index(_index), descriptorsN(blueprint.descriptorsN){
+Interface::Pipeline::DescriptorSet::DescriptorSet(Pipeline &_pipeline, int _index, const DescriptorSetBlueprint &blueprint) : pipeline(_pipeline), index(_index) {
 	
-	descriptors = (Descriptor **)malloc(blueprint.descriptorsN*sizeof(Descriptor *));
-	for(int i=0; i<blueprint.descriptorsN; i++){
-		switch(blueprint.descriptorBlueprints[i].type){
+	descriptors = std::vector<std::shared_ptr<Descriptor>>(blueprint.size());
+	for(int i=0; i<blueprint.size(); i++){
+		switch(blueprint[i].type){
 			case DescriptorType::UBO: {
-				UniformBufferObject &ref = _pipeline.vulkan.uniformBufferObjects[blueprint.descriptorBlueprints[i].indicesA[0]];
-				uboDynamic = ref.dynamicRepeats > 1;
-				if(uboDynamic) uboDynamicAlignment = ref.dynamicAlignment;
-				descriptors[i] = new UBODescriptor(*this, blueprint.descriptorBlueprints[i].binding, blueprint.descriptorBlueprints[i].stageFlags, blueprint.descriptorBlueprints[i].indicesA[0]);
+				UniformBufferObject &ref = _pipeline.vulkan.uniformBufferObjects[blueprint[i].indicesExtra[0]];
+				if(ref.dynamic){
+					uboDynamicAlignment = ref.dynamic->alignment;
+				} else {
+					uboDynamicAlignment.reset();
+				}
+				descriptors[i] = std::make_shared<UBODescriptor>(*this, blueprint[i].binding, blueprint[i].stageFlags, blueprint[i].indicesExtra[0]);
 				break;
 			}
 			case DescriptorType::SBO:
-				descriptors[i] = new SBODescriptor(*this, blueprint.descriptorBlueprints[i].binding, blueprint.descriptorBlueprints[i].stageFlags, blueprint.descriptorBlueprints[i].indicesA[0]);
+				descriptors[i] = std::make_shared<SBODescriptor>(*this, blueprint[i].binding, blueprint[i].stageFlags, blueprint[i].indicesExtra[0], blueprint[i].indicesExtra[1]);
 				break;
 			case DescriptorType::textureImage:
-				descriptors[i] = new TextureImagesDescriptor(*this, blueprint.descriptorBlueprints[i].binding, blueprint.descriptorBlueprints[i].stageFlags, blueprint.descriptorBlueprints[i].count, blueprint.descriptorBlueprints[i].indicesA);
+				descriptors[i] = std::make_shared<TextureImagesDescriptor>(*this, blueprint[i].binding, blueprint[i].stageFlags, blueprint[i].indicesExtra);
 				break;
 			case DescriptorType::textureSampler:
-				descriptors[i] = new TextureSamplersDescriptor(*this, blueprint.descriptorBlueprints[i].binding, blueprint.descriptorBlueprints[i].stageFlags, blueprint.descriptorBlueprints[i].count, blueprint.descriptorBlueprints[i].indicesA);
+				descriptors[i] = std::make_shared<TextureSamplersDescriptor>(*this, blueprint[i].binding, blueprint[i].stageFlags, blueprint[i].indicesExtra);
 				break;
 			case DescriptorType::combinedImageSampler:
-				descriptors[i] = new CombinedImageSamplersDescriptor(*this, blueprint.descriptorBlueprints[i].binding, blueprint.descriptorBlueprints[i].stageFlags, blueprint.descriptorBlueprints[i].count, blueprint.descriptorBlueprints[i].indicesA, blueprint.descriptorBlueprints[i].indicesB);
+				descriptors[i] = std::make_shared<CombinedImageSamplersDescriptor>(*this, blueprint[i].binding, blueprint[i].stageFlags, blueprint[i].indicesExtra, blueprint[i].indicesExtra2);
 				break;
 			case DescriptorType::storageImage:
-				descriptors[i] = new StorageImagesDescriptor(*this, blueprint.descriptorBlueprints[i].binding, blueprint.descriptorBlueprints[i].stageFlags, blueprint.descriptorBlueprints[i].count, blueprint.descriptorBlueprints[i].indicesA);
+				descriptors[i] = std::make_shared<StorageImagesDescriptor>(*this, blueprint[i].binding, blueprint[i].stageFlags, blueprint[i].indicesExtra);
 				break;
 			default:
 				throw std::runtime_error("unhandled descriptor type!");
@@ -37,16 +40,16 @@ Interface::Pipeline::DescriptorSet::DescriptorSet(Pipeline &_pipeline, int _inde
 
 
 void Interface::Pipeline::DescriptorSet::InitLayouts(){
-#ifdef MAKE_ASSERTIONS
-	//assert(descriptorCount == descriptorsArraySize);
-#endif
-	VkDescriptorSetLayoutBinding layoutBindings[descriptorsN];
-	for(int i=0; i<descriptorsN; i++) layoutBindings[i] = descriptors[i]->LayoutBinding();
-	VkDescriptorSetLayoutCreateInfo layoutInfo{};
-	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	layoutInfo.bindingCount = descriptorsN;
-	layoutInfo.pBindings = layoutBindings;
-	if(vkCreateDescriptorSetLayout(pipeline.vulkan.devices.logicalDevice, &layoutInfo, nullptr, &pipeline.descriptorSetLayouts[index]) != VK_SUCCESS) throw std::runtime_error("failed to create descriptor set layout!");
+	VkDescriptorSetLayoutBinding layoutBindings[descriptors.size()];
+	for(int i=0; i<descriptors.size(); i++) layoutBindings[i] = descriptors[i]->LayoutBinding();
+	
+	VkDescriptorSetLayoutCreateInfo layoutInfo{
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+		.bindingCount = uint32_t(descriptors.size()),
+		.pBindings = layoutBindings
+	};
+	if(vkCreateDescriptorSetLayout(pipeline.vulkan.devices.logicalDevice, &layoutInfo, nullptr, &pipeline.descriptorSetLayouts[index]) != VK_SUCCESS)
+		throw std::runtime_error("failed to create descriptor set layout!");
 }
 
 void Interface::Pipeline::DescriptorSet::InitConfigurations(){
@@ -56,15 +59,15 @@ void Interface::Pipeline::DescriptorSet::InitConfigurations(){
 	
 	// configuring descriptors in descriptor sets
 	for(int i=0; i<MAX_FRAMES_IN_FLIGHT; i++){
-		VkWriteDescriptorSet *descriptorWrites = (VkWriteDescriptorSet *)malloc(descriptorsN*sizeof(VkWriteDescriptorSet));
+		std::vector<VkWriteDescriptorSet> descriptorWrites = std::vector<VkWriteDescriptorSet>(descriptors.size());
 		
 		bufferInfoCounter = 0;
 		imageInfoCounter = 0;
 		
-		for(int j=0; j<descriptorsN; j++) descriptorWrites[j] = descriptors[j]->DescriptorWrite(pipeline.descriptorSetsFlying[pipeline.descriptorSetsN*i + index], imageInfos, imageInfoCounter, bufferInfos, bufferInfoCounter, i);
+		for(int j=0; j<descriptors.size(); j++)
+			descriptorWrites[j] = descriptors[j]->DescriptorWrite(pipeline.descriptorSetsFlying[pipeline.descriptorSets.size() * i + index], imageInfos, imageInfoCounter, bufferInfos, bufferInfoCounter, i);
 		
-		vkUpdateDescriptorSets(pipeline.vulkan.devices.logicalDevice, descriptorsN, descriptorWrites, 0, nullptr);
-		free(descriptorWrites);
+		vkUpdateDescriptorSets(pipeline.vulkan.devices.logicalDevice, uint32_t(descriptors.size()), descriptorWrites.data(), 0, nullptr);
 	}
 }
 

@@ -105,18 +105,20 @@ bool IsDeviceSuitable(const VkPhysicalDevice &device, const VkSurfaceKHR &surfac
 	// need to add all supported features here?
 }
 
-Devices::Devices(SDL_Window *const &_sdlWindowPtr) : sdlWindowPtr(_sdlWindowPtr) {
+Devices::Devices(SDL_Window *_sdlWindowPtr) : sdlWindowPtr(_sdlWindowPtr) {
 	// -----
 	// Creating Vulkan instance
 	// -----
 	{
-		VkApplicationInfo appInfo{};
-		appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-		appInfo.pApplicationName = "VulkanFirst";
-		appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-		appInfo.pEngineName = "No Engine";
-		appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-		appInfo.apiVersion = VK_API_VERSION_1_3;
+		VkApplicationInfo appInfo{
+			.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+			.pApplicationName = "VulkanFirst",
+			.applicationVersion = VK_MAKE_VERSION(1, 0, 0),
+			.pEngineName = "No Engine",
+			.engineVersion = VK_MAKE_VERSION(1, 0, 0),
+			.apiVersion = VK_API_VERSION_1_3
+		};
+		
 		VkInstanceCreateInfo createInfo{};
 		createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 		createInfo.pApplicationInfo = &appInfo;
@@ -203,15 +205,15 @@ Devices::Devices(SDL_Window *const &_sdlWindowPtr) : sdlWindowPtr(_sdlWindowPtr)
 		//deviceFeatures.shaderSampledImageArrayDynamicIndexing = VK_TRUE; // ? added to this to try fix textures, didn't help
 		//deviceFeatures.shaderUniformBufferArrayDynamicIndexing = VK_TRUE; // ? added this because it looks like I should (dynamic ubos worked without it)
 		
-		VkDeviceCreateInfo createInfo{};
-		createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-		createInfo.pQueueCreateInfos = queueCreateInfos;
-		createInfo.queueCreateInfoCount = QUEUE_FAMILIES_N;
-		createInfo.pEnabledFeatures = &deviceFeatures;
-		createInfo.enabledExtensionCount = (uint32_t)deviceExtensions.size();
-		createInfo.ppEnabledExtensionNames = deviceExtensions.data();
-		createInfo.enabledLayerCount = 0;
-		
+		VkDeviceCreateInfo createInfo{
+			.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+			.pQueueCreateInfos = queueCreateInfos,
+			.queueCreateInfoCount = QUEUE_FAMILIES_N,
+			.pEnabledFeatures = &deviceFeatures,
+			.enabledExtensionCount = (uint32_t)deviceExtensions.size(),
+			.ppEnabledExtensionNames = deviceExtensions.data(),
+			.enabledLayerCount = 0
+		};
 		if(vkCreateDevice(physicalDevice, &createInfo, nullptr, &logicalDevice) != VK_SUCCESS) throw std::runtime_error("failed to create logical device!");
 	}
 	
@@ -228,29 +230,39 @@ Devices::Devices(SDL_Window *const &_sdlWindowPtr) : sdlWindowPtr(_sdlWindowPtr)
 	// Creating the memory allocator
 	// -----
 	{
-		VmaVulkanFunctions vulkanFunctions = {};
-		vulkanFunctions.vkGetInstanceProcAddr = &vkGetInstanceProcAddr;
-		vulkanFunctions.vkGetDeviceProcAddr = &vkGetDeviceProcAddr;
-		VmaAllocatorCreateInfo createInfo{};
-		createInfo.physicalDevice = physicalDevice;
-		createInfo.device = logicalDevice;
-		createInfo.pHeapSizeLimit = nullptr;
-		createInfo.pVulkanFunctions = &vulkanFunctions;
-		createInfo.instance = instance;
-		createInfo.pTypeExternalMemoryHandleTypes = nullptr;
-		createInfo.vulkanApiVersion = VK_API_VERSION_1_3;
+		VmaVulkanFunctions vulkanFunctions = {
+			.vkGetInstanceProcAddr = &vkGetInstanceProcAddr,
+			.vkGetDeviceProcAddr = &vkGetDeviceProcAddr
+		};
+		VmaAllocatorCreateInfo createInfo{
+			.physicalDevice = physicalDevice,
+			.device = logicalDevice,
+			.pHeapSizeLimit = nullptr,
+			.pVulkanFunctions = &vulkanFunctions,
+			.instance = instance,
+			.pTypeExternalMemoryHandleTypes = nullptr,
+			.vulkanApiVersion = VK_API_VERSION_1_3
+		};
 		if(vmaCreateAllocator(&createInfo, &allocator) != VK_SUCCESS) throw std::runtime_error("failed to create memory devices.allocator!");
 	}
 }
-VkShaderModule Devices::CreateShaderModule(const char *const &filename) const {
+Devices::~Devices(){
+	vmaDestroyAllocator(allocator);
+	vkDestroySurfaceKHR(instance, surface, nullptr);
+	vkDestroyDevice(logicalDevice, nullptr);
+	vkDestroyInstance(instance, nullptr);
+}
+
+VkShaderModule Devices::CreateShaderModule(const char *filename) const {
 	size_t size;
 	uint8_t *bytes = ReadFile(filename, size);
 	
 	VkShaderModule ret;
-	VkShaderModuleCreateInfo createInfo{};
-	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	createInfo.codeSize = size;
-	createInfo.pCode = (uint32_t *)bytes;
+	VkShaderModuleCreateInfo createInfo{
+		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+		.codeSize = size,
+		.pCode = (uint32_t *)bytes
+	};
 	if(vkCreateShaderModule(logicalDevice, &createInfo, nullptr, &ret) != VK_SUCCESS) throw std::runtime_error("failed to create shader module!");
 	
 	free(bytes);
@@ -281,7 +293,7 @@ uint32_t Devices::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags prop
 	}
 	throw std::runtime_error("failed to find suitable memory type!");
 }
-VkFormat Devices::FindSupportedFormat(const VkFormat *const &candidates, const int &n, VkImageTiling tiling, VkFormatFeatureFlags features) const {
+VkFormat Devices::FindSupportedFormat(const VkFormat *candidates, int n, const VkImageTiling &tiling, const VkFormatFeatureFlags &features) const {
 	for(int i=0; i<n; i++){
 		VkFormatProperties props;
 		vkGetPhysicalDeviceFormatProperties(physicalDevice, candidates[i], &props);
