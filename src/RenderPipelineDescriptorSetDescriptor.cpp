@@ -51,7 +51,7 @@ VkDescriptorSetLayoutBinding Interface::Pipeline::DescriptorSet::SBODescriptor::
 VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::SBODescriptor::DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const {
 	StorageBufferObject &ref = descriptorSet.pipeline.vulkan.storageBufferObjects[index];
 	
-	bufferInfoBuffer[bufferInfoBufferIndex].buffer = ref.buffersFlying[(flight + flightOffset) % MAX_FRAMES_IN_FLIGHT];
+	bufferInfoBuffer[bufferInfoBufferIndex].buffer = ref.buffersFlying[PositiveModulo(flight + flightOffset, MAX_FRAMES_IN_FLIGHT)];
 	bufferInfoBuffer[bufferInfoBufferIndex].offset = 0;
 	bufferInfoBuffer[bufferInfoBufferIndex].range = ref.size;
 	

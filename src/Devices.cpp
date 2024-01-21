@@ -105,14 +105,19 @@ bool IsDeviceSuitable(const VkPhysicalDevice &device, const VkSurfaceKHR &surfac
 	// need to add all supported features here?
 }
 
-Devices::Devices(SDL_Window *_sdlWindowPtr) : sdlWindowPtr(_sdlWindowPtr) {
+Devices::Devices(const char *applicationName,
+				 std::vector<const char *> requiredExtensions,
+				 std::function<VkSurfaceKHR (VkInstance)> surfaceCreationFunction,
+				 std::function<VkExtent2D ()> _getExtentFunction)
+: getExtentFunction(std::move(_getExtentFunction)) {
+	
 	// -----
 	// Creating Vulkan instance
 	// -----
 	{
 		VkApplicationInfo appInfo{
 			.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-			.pApplicationName = "VulkanFirst",
+			.pApplicationName = applicationName,
 			.applicationVersion = VK_MAKE_VERSION(1, 0, 0),
 			.pEngineName = "No Engine",
 			.engineVersion = VK_MAKE_VERSION(1, 0, 0),
@@ -124,30 +129,22 @@ Devices::Devices(SDL_Window *_sdlWindowPtr) : sdlWindowPtr(_sdlWindowPtr) {
 		createInfo.pApplicationInfo = &appInfo;
 		
 		// extensions
-		uint32_t extraExtensions = 1; // !!! number of extra extensions
-		uint32_t requiredExtensionCount = 0;
-		SDL_Vulkan_GetInstanceExtensions(_sdlWindowPtr, &requiredExtensionCount, nullptr);
-		const char** requiredExtensions = (const char **)malloc((requiredExtensionCount + extraExtensions)*sizeof(char *));
-		SDL_Vulkan_GetInstanceExtensions(_sdlWindowPtr, &requiredExtensionCount, requiredExtensions);
-		requiredExtensions[requiredExtensionCount++] = VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
-		createInfo.enabledExtensionCount = requiredExtensionCount;
-		createInfo.ppEnabledExtensionNames = requiredExtensions;
-		// !!! extra extensions here
+//		SDL_Vulkan_GetInstanceExtensions(_sdlWindowPtr, &requiredExtensionCount, nullptr);
+//		SDL_Vulkan_GetInstanceExtensions(_sdlWindowPtr, &requiredExtensionCount, requiredExtensions);
+		requiredExtensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+		createInfo.enabledExtensionCount = uint32_t(requiredExtensions.size());
+		createInfo.ppEnabledExtensionNames = requiredExtensions.data();
 		
 		//for(int i=0; i<requiredExtensionCount; i++) std::cout << requiredExtensions[i] << "\n";
 		
 		createInfo.enabledLayerCount = 0;
 		createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
 		
-		if(vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) throw std::runtime_error("failed to create devices.instance!");
+		if(vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS)
+			throw std::runtime_error("failed to create devices.instance!");
 	}
 	
-	
-	// -----
-	// Creating Vulkan SDL surface
-	// -----
-	if(SDL_Vulkan_CreateSurface(_sdlWindowPtr, instance, &surface) == SDL_FALSE) throw std::runtime_error("failed to create window devices.surface!");
-	
+	surface = surfaceCreationFunction(instance);
 	
 	// -----
 	// Picking physical graphics device

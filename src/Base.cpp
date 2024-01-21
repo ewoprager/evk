@@ -59,17 +59,17 @@ VkPresentModeKHR ChooseSwapPresentMode(const std::vector<VkPresentModeKHR> &avai
 	
 	return VK_PRESENT_MODE_FIFO_KHR;
 }
-VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities, SDL_Window *window) {
+VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities, VkExtent2D actualExtent) {
 	if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
 		return capabilities.currentExtent;
 	} else {
-		int width, height;
-		SDL_GL_GetDrawableSize(window, &width, &height);
-		
-		VkExtent2D actualExtent = {
-			static_cast<uint32_t>(width),
-			static_cast<uint32_t>(height)
-		};
+//		int width, height;
+//		SDL_GL_GetDrawableSize(window, &width, &height);
+//		
+//		VkExtent2D actualExtent = {
+//			static_cast<uint32_t>(width),
+//			static_cast<uint32_t>(height)
+//		};
 		
 		actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
 		actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
@@ -84,7 +84,7 @@ void Interface::CreateSwapChain(){
 	
 	VkSurfaceFormatKHR surfaceFormat = ChooseSwapSurfaceFormat(swapChainSupport.formats);
 	VkPresentModeKHR presentMode = ChooseSwapPresentMode(swapChainSupport.presentModes);
-	VkExtent2D extent = ChooseSwapExtent(swapChainSupport.capabilities, sdlWindowPtr);
+	VkExtent2D extent = ChooseSwapExtent(swapChainSupport.capabilities, devices.GetSurfaceExtent());
 	
 	imageCount = swapChainSupport.capabilities.minImageCount + 1;
 	if(swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount){
@@ -1043,17 +1043,18 @@ void Interface::BeginFinalRenderPass(){
 	};
 	vkCmdSetScissor(commandBuffersFlying[currentFrame], 0, 1, &scissor);
 }
-void Interface::EndFinalRenderPassAndFrame(bool waitForCompute){
+void Interface::EndFinalRenderPassAndFrame(std::optional<VkPipelineStageFlags> stagesWaitForCompute){
 	vkCmdEndRenderPass(commandBuffersFlying[currentFrame]);
 	
-	if(vkEndCommandBuffer(commandBuffersFlying[currentFrame]) != VK_SUCCESS) throw std::runtime_error("failed to record command buffer!");
+	if(vkEndCommandBuffer(commandBuffersFlying[currentFrame]) != VK_SUCCESS)
+		throw std::runtime_error("failed to record command buffer!");
 	
 	// submitting the command buffer to the graphics queue
 	std::vector<VkSemaphore> waitSemaphores = {imageAvailableSemaphoresFlying[currentFrame]};
 	std::vector<VkPipelineStageFlags> waitStages = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-	if(waitForCompute){
+	if(stagesWaitForCompute){
 		waitSemaphores.push_back(computeFinishedSemaphoresFlying[currentFrame]);
-		waitStages.push_back(VK_PIPELINE_STAGE_VERTEX_INPUT_BIT);
+		waitStages.push_back(stagesWaitForCompute.value());
 	}
 	VkSemaphore signalSemaphores[1] = {renderFinishedSemaphoresFlying[currentFrame]};
 	
@@ -1067,7 +1068,8 @@ void Interface::EndFinalRenderPassAndFrame(bool waitForCompute){
 		.signalSemaphoreCount = 1,
 		.pSignalSemaphores = signalSemaphores
 	};
-	if(vkQueueSubmit(devices.graphicsQueue, 1, &submitInfo, inFlightFencesFlying[currentFrame]) != VK_SUCCESS) throw std::runtime_error("failed to submit draw command buffer!");
+	if(vkQueueSubmit(devices.graphicsQueue, 1, &submitInfo, inFlightFencesFlying[currentFrame]) != VK_SUCCESS)
+		throw std::runtime_error("failed to submit draw command buffer!");
 	
 	// presenting on the present queue
 	VkSwapchainKHR swapChains[] = {swapChain};
@@ -1097,10 +1099,12 @@ void Interface::BeginCompute(){
 	VkCommandBufferBeginInfo beginInfo{
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
 	};
-	if (vkBeginCommandBuffer(computeCommandBuffersFlying[currentFrame], &beginInfo) != VK_SUCCESS) throw std::runtime_error("failed to begin recording compute command buffer!");
+	if (vkBeginCommandBuffer(computeCommandBuffersFlying[currentFrame], &beginInfo) != VK_SUCCESS)
+		throw std::runtime_error("failed to begin recording compute command buffer!");
 }
 void Interface::EndCompute(){
-	if(vkEndCommandBuffer(computeCommandBuffersFlying[currentFrame]) != VK_SUCCESS) throw std::runtime_error("failed to record command buffer!");
+	if(vkEndCommandBuffer(computeCommandBuffersFlying[currentFrame]) != VK_SUCCESS)
+		throw std::runtime_error("failed to record command buffer!");
 	
 	VkSubmitInfo submitInfo {
 		.commandBufferCount = 1,
@@ -1108,7 +1112,8 @@ void Interface::EndCompute(){
 		.signalSemaphoreCount = 1,
 		.pSignalSemaphores = &computeFinishedSemaphoresFlying[currentFrame]
 	};
-	if (vkQueueSubmit(devices.computeQueue, 1, &submitInfo, computeInFlightFencesFlying[currentFrame]) != VK_SUCCESS) throw std::runtime_error("failed to submit compute command buffer!");
+	if (vkQueueSubmit(devices.computeQueue, 1, &submitInfo, computeInFlightFencesFlying[currentFrame]) != VK_SUCCESS)
+		throw std::runtime_error("failed to submit compute command buffer!");
 }
 
 void Interface::CmdEndRenderPass(){
@@ -1119,8 +1124,8 @@ void Interface::CmdBindVertexBuffer(uint32_t binding, int index){
 	if(!vertexBufferObjects[index]) throw std::runtime_error("Cannot bind vertex buffer; it hasn't been filled.");
 	vkCmdBindVertexBuffers(commandBuffersFlying[currentFrame], binding, 1, &vertexBufferObjects[index]->bufferHandle, &vertexBufferObjects[index]->offset);
 }
-void Interface::CmdBindStorageBufferAsVertexBuffer(uint32_t binding, int index){
-	vkCmdBindVertexBuffers(commandBuffersFlying[currentFrame], binding, 1, &storageBufferObjects[index].buffersFlying[currentFrame], nullptr);
+void Interface::CmdBindStorageBufferAsVertexBuffer(uint32_t binding, int index, const VkDeviceSize &offset){
+	vkCmdBindVertexBuffers(commandBuffersFlying[currentFrame], binding, 1, &storageBufferObjects[index].buffersFlying[currentFrame], &offset);
 }
 void Interface::CmdBindIndexBuffer(int index, const VkIndexType &type){
 	if(!indexBufferObjects[index]) throw std::runtime_error("Cannot bind index buffer; it hasn't been filled.");
@@ -1137,6 +1142,23 @@ void Interface::CmdSetDepthBias(float constantFactor, float clamp, float slopeFa
 }
 void Interface::CmdDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ){
 	vkCmdDispatch(computeCommandBuffersFlying[currentFrame], groupCountX, groupCountY, groupCountZ);
+}
+void Interface::CmdPipelineImageMemoryBarrier(bool graphicsOrCompute, int imageIndex, VkPipelineStageFlags srcStageMask, VkPipelineStageFlags dstStageMask, VkDependencyFlags dependencyFlags, VkAccessFlags srcAccessMask, VkAccessFlags dstAccessMask, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t srcQueueFamilyIndex, uint32_t dstQueueFamilyIndex, VkImageSubresourceRange subresourceRange){
+	const VkImageMemoryBarrier imageMemoryBarrier = {
+		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+		.oldLayout = oldLayout,
+		.newLayout = newLayout,
+		.image = textureImages[imageIndex].image,
+		.subresourceRange = subresourceRange,
+		.srcAccessMask = srcAccessMask,
+		.dstAccessMask = dstAccessMask,
+		.srcQueueFamilyIndex = srcQueueFamilyIndex,
+		.dstQueueFamilyIndex = dstQueueFamilyIndex
+	};
+	vkCmdPipelineBarrier(graphicsOrCompute ? computeCommandBuffersFlying[currentFrame] : commandBuffersFlying[currentFrame],
+						 srcStageMask, dstStageMask, dependencyFlags,
+						 0, nullptr, 0, nullptr,
+						 1, &imageMemoryBarrier);
 }
 void Interface::CmdBeginBufferedRenderPass(int bufferedRenderPassIndex, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues){
 	BufferedRenderPass &ref = bufferedRenderPasses[bufferedRenderPassIndex];

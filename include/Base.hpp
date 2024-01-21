@@ -5,14 +5,16 @@
 
 #include <iostream>
 #include <assert.h>
+#include <chrono>
+#include <thread>
+#include <functional>
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_vulkan.h>
 #include <MoltenVK/mvk_vulkan.h>
 #include <vma/vk_mem_alloc.h>
 
-#include <ESDL/ESDL_EventHandler.hpp>
-#include <mat4x4/mat4x4.hpp>
+#include <ESDL/ESDL_EventHandler.h>
 #include <SDL2/SDL_image.h>
 
 #define MAX_FRAMES_IN_FLIGHT 2
@@ -173,7 +175,8 @@ struct LayeredBufferedRenderPass {
 
 class Devices {
 public:
-	Devices(SDL_Window *_sdlWindowPtr);
+	Devices(const char *applicationName, std::vector<const char *> requiredExtensions, std::function<VkSurfaceKHR (VkInstance)> surfaceCreationFunction, std::function<VkExtent2D ()> _getExtentFunction);
+	
 	Devices() = delete;
 	Devices(const Devices &) = delete;
 	Devices &operator=(const Devices &) = delete;
@@ -203,8 +206,12 @@ public:
 	
 	SwapChainSupportDetails QuerySwapChainSupport() const;
 	
+	VkExtent2D GetSurfaceExtent() const { return getExtentFunction(); }
+	
 private:
-	SDL_Window *sdlWindowPtr;
+	void CreateInstance(const char *applicationName, std::vector<const char *> requiredExtensions);
+	void Init();
+	
 	VkInstance instance;
 	VkSurfaceKHR surface;
 	VkPhysicalDevice physicalDevice;
@@ -212,6 +219,8 @@ private:
 	QueueFamilyIndices queueFamilyIndices;
 	VkDevice logicalDevice;
 	VmaAllocator allocator;
+	
+	std::function<VkExtent2D ()> getExtentFunction;
 	
 	// queues:
 	VkQueue graphicsQueue;
@@ -410,16 +419,18 @@ public:
 	// ------------------------------------
 	// ----- Frames and render passes -----
 	// ------------------------------------
+	// ----- General commands -----
+	void CmdPipelineImageMemoryBarrier(bool graphicsOrCompute, int imageIndex, VkPipelineStageFlags srcStageMask, VkPipelineStageFlags dstStageMask, VkDependencyFlags dependencyFlags, VkAccessFlags srcAccessMask, VkAccessFlags dstAccessMask, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t srcQueueFamilyIndex, uint32_t dstQueueFamilyIndex, VkImageSubresourceRange subresourceRange);
 	// ----- Graphics commands -----
 	bool BeginFrame();
 	void CmdBeginBufferedRenderPass(int bufferedRenderPassIndex, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues);
 	void CmdBeginLayeredBufferedRenderPass(int layeredBufferedRenderPassIndex, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues, int layer);
 	void CmdEndRenderPass();
 	void BeginFinalRenderPass();
-	void EndFinalRenderPassAndFrame(bool waitForCompute=false);
+	void EndFinalRenderPassAndFrame(std::optional<VkPipelineStageFlags> stagesWaitForCompute=std::optional<VkPipelineStageFlags>());
 	// ----- Render pass commands -----
 	void CmdBindVertexBuffer(uint32_t binding, int index);
-	void CmdBindStorageBufferAsVertexBuffer(uint32_t binding, int index);
+	void CmdBindStorageBufferAsVertexBuffer(uint32_t binding, int index, const VkDeviceSize &offset=0);
 	void CmdBindIndexBuffer(int index, const VkIndexType &type);
 	void CmdDraw(uint32_t vertexCount, uint32_t instanceCount=1, uint32_t firstVertex=0, uint32_t firstInstance=0);
 	void CmdDrawIndexed(uint32_t indexCount, uint32_t instanceCount=1, uint32_t firstIndex=0, int32_t vertexOffset=0, uint32_t firstInstance=0);
@@ -451,8 +462,6 @@ public:
 	void FramebufferResizeCallback(SDL_Event event){ framebufferResized = true; }
 	
 private:
-	SDL_Window *sdlWindowPtr;
-	
 	const Devices &devices;
 	
 	VkSwapchainKHR swapChain;
@@ -767,12 +776,11 @@ private:
 	void CleanUpSwapChain();
 	void RecreateResisingBRPsAndImages();
 	void RecreateSwapChain(){
+		VkExtent2D extent = devices.GetSurfaceExtent();
 		// in case we are minimised:
-		int width, height;
-		SDL_GL_GetDrawableSize(sdlWindowPtr, &width, &height);
-		while(width == 0 || height == 0){
-			SDL_GL_GetDrawableSize(sdlWindowPtr, &width, &height);
-			SDL_WaitEvent(nullptr);
+		while(extent.width == 0 || extent.height == 0){
+			extent = devices.GetSurfaceExtent();
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		}
 		
 		vkDeviceWaitIdle(devices.logicalDevice);
