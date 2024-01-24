@@ -25,7 +25,6 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 						   "/Users/eprager/local/include/"
                            "/usr/local/include/"
 						   "/opt/local/include/"
-						   "/opt/local/include/SDL2/"
 						   )
 
 target_link_directories(${PROJECT_NAME} PUBLIC

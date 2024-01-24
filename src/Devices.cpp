@@ -4,7 +4,7 @@
 
 static uint8_t *ReadFile(const char *filename, size_t &sizeOut){
 	FILE *fptr = fopen(filename, "r");
-	if(!fptr) throw std::runtime_error("failed to open file!");
+	if(!fptr) throw std::runtime_error(std::string("failed to open file: ") + std::string(filename));
 	fseek(fptr, 0, SEEK_END);
 	sizeOut = (size_t)ftell(fptr);
 	uint8_t *ret = (uint8_t *)malloc(sizeOut);
@@ -14,15 +14,23 @@ static uint8_t *ReadFile(const char *filename, size_t &sizeOut){
 	return ret;
 }
 
+#ifndef NDEBUG
+static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
+	std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+
+	return VK_FALSE;
+}
+#endif
+
 namespace EVK {
 
 const std::vector<const char *> deviceExtensions = {
-	VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+	VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
 const std::vector<const char *> instanceExtensions = {};
 
 #define QUEUE_FAMILIES_N 2
-QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice &device, const VkSurfaceKHR &surface){
+static QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice &device, const VkSurfaceKHR &surface){
 	QueueFamilyIndices ret;
 	
 	uint32_t queueFamilyCount;
@@ -40,15 +48,16 @@ QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice &device, const VkSur
 	return ret;
 }
 
-bool CheckDeviceExtensionSupport(const VkPhysicalDevice &device){
+static bool CheckDeviceExtensionSupport(const VkPhysicalDevice &device){
 	{
 		uint32_t instancedExtensionCount;
 		vkEnumerateInstanceExtensionProperties(nullptr, &instancedExtensionCount, nullptr);
-		VkExtensionProperties availableExtensions[instancedExtensionCount];
-		vkEnumerateInstanceExtensionProperties(nullptr, &instancedExtensionCount, availableExtensions);
+		std::vector<VkExtensionProperties> availableExtensions(instancedExtensionCount);
+		vkEnumerateInstanceExtensionProperties(nullptr, &instancedExtensionCount, availableExtensions.data());
 		
 		std::set<std::string> requiredExtensions(instanceExtensions.begin(), instanceExtensions.end());
-		for(int i=0; i<instancedExtensionCount; i++) requiredExtensions.erase(availableExtensions[i].extensionName);
+		for(VkExtensionProperties extension : availableExtensions)
+			requiredExtensions.erase(extension.extensionName);
 		
 		if(!requiredExtensions.empty()) return false;
 	}
@@ -56,11 +65,12 @@ bool CheckDeviceExtensionSupport(const VkPhysicalDevice &device){
 	{
 		uint32_t deviceExtensionCount;
 		vkEnumerateDeviceExtensionProperties(device, nullptr, &deviceExtensionCount, nullptr);
-		VkExtensionProperties availableExtensions[deviceExtensionCount];
-		vkEnumerateDeviceExtensionProperties(device, nullptr, &deviceExtensionCount, availableExtensions);
+		std::vector<VkExtensionProperties> availableExtensions(deviceExtensionCount);
+		vkEnumerateDeviceExtensionProperties(device, nullptr, &deviceExtensionCount, availableExtensions.data());
 		
 		std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
-		for(int i=0; i<deviceExtensionCount; i++) requiredExtensions.erase(availableExtensions[i].extensionName);
+		for(VkExtensionProperties extension : availableExtensions)
+			requiredExtensions.erase(extension.extensionName);
 		
 		if(!requiredExtensions.empty()) return false;
 	}
@@ -90,7 +100,7 @@ static SwapChainSupportDetails QueryDevicesSwapChainSupport(const VkPhysicalDevi
 }
 SwapChainSupportDetails Devices::QuerySwapChainSupport() const { return QueryDevicesSwapChainSupport(physicalDevice, surface); }
 
-bool IsDeviceSuitable(const VkPhysicalDevice &device, const VkSurfaceKHR &surface){
+static bool IsDeviceSuitable(const VkPhysicalDevice &device, const VkSurfaceKHR &surface){
 	QueueFamilyIndices indices = FindQueueFamilies(device, surface);
 	
 	bool swapChainAdequate = false;
@@ -104,6 +114,32 @@ bool IsDeviceSuitable(const VkPhysicalDevice &device, const VkSurfaceKHR &surfac
 	&& supportedFeatures.samplerAnisotropy;
 	// need to add all supported features here?
 }
+
+#ifndef NDEBUG
+static VkDebugUtilsMessengerCreateInfoEXT GetDebugMessengerCreateInfo() {
+	return {
+		.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+		.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+		.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+		.pfnUserCallback = DebugCallback
+	};
+}
+static VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger) {
+	auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+	if (func != nullptr) {
+		return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
+	}
+	else {
+		return VK_ERROR_EXTENSION_NOT_PRESENT;
+	}
+}
+static void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator) {
+	auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+	if (func != nullptr) {
+		func(instance, debugMessenger, pAllocator);
+	}
+}
+#endif
 
 Devices::Devices(const char *applicationName,
 				 std::vector<const char *> requiredExtensions,
@@ -121,28 +157,35 @@ Devices::Devices(const char *applicationName,
 			.applicationVersion = VK_MAKE_VERSION(1, 0, 0),
 			.pEngineName = "No Engine",
 			.engineVersion = VK_MAKE_VERSION(1, 0, 0),
-			.apiVersion = VK_API_VERSION_1_3
+			.apiVersion = VULKAN_VERSION_USING
 		};
 		
 		VkInstanceCreateInfo createInfo{};
 		createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 		createInfo.pApplicationInfo = &appInfo;
-		
-		// extensions
-//		SDL_Vulkan_GetInstanceExtensions(_sdlWindowPtr, &requiredExtensionCount, nullptr);
-//		SDL_Vulkan_GetInstanceExtensions(_sdlWindowPtr, &requiredExtensionCount, requiredExtensions);
 		requiredExtensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+#ifndef NDEBUG
+		requiredExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+#endif
 		createInfo.enabledExtensionCount = uint32_t(requiredExtensions.size());
 		createInfo.ppEnabledExtensionNames = requiredExtensions.data();
-		
-		//for(int i=0; i<requiredExtensionCount; i++) std::cout << requiredExtensions[i] << "\n";
-		
+		VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
+		debugCreateInfo = GetDebugMessengerCreateInfo();
+		createInfo.pNext = &debugCreateInfo;
 		createInfo.enabledLayerCount = 0;
 		createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
-		
 		if(vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS)
 			throw std::runtime_error("failed to create devices.instance!");
 	}
+	
+#ifndef NDEBUG
+	// -----
+	// Setting up the debug messenger
+	// -----
+	VkDebugUtilsMessengerCreateInfoEXT createInfo = GetDebugMessengerCreateInfo();
+	if(CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS)
+		throw std::runtime_error("failed to set up debug messenger!");
+#endif
 	
 	surface = surfaceCreationFunction(instance);
 	
@@ -202,16 +245,17 @@ Devices::Devices(const char *applicationName,
 		//deviceFeatures.shaderSampledImageArrayDynamicIndexing = VK_TRUE; // ? added to this to try fix textures, didn't help
 		//deviceFeatures.shaderUniformBufferArrayDynamicIndexing = VK_TRUE; // ? added this because it looks like I should (dynamic ubos worked without it)
 		
-		VkDeviceCreateInfo createInfo{
+		VkDeviceCreateInfo createInfo {
 			.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-			.pQueueCreateInfos = queueCreateInfos,
 			.queueCreateInfoCount = QUEUE_FAMILIES_N,
+			.pQueueCreateInfos = queueCreateInfos,
+			.enabledLayerCount = 0,
 			.pEnabledFeatures = &deviceFeatures,
-			.enabledExtensionCount = (uint32_t)deviceExtensions.size(),
-			.ppEnabledExtensionNames = deviceExtensions.data(),
-			.enabledLayerCount = 0
+			.enabledExtensionCount = uint32_t(deviceExtensions.size()),
+			.ppEnabledExtensionNames = deviceExtensions.data()
 		};
-		if(vkCreateDevice(physicalDevice, &createInfo, nullptr, &logicalDevice) != VK_SUCCESS) throw std::runtime_error("failed to create logical device!");
+		if(vkCreateDevice(physicalDevice, &createInfo, nullptr, &logicalDevice) != VK_SUCCESS)
+			throw std::runtime_error("failed to create logical device!");
 	}
 	
 	
@@ -238,15 +282,18 @@ Devices::Devices(const char *applicationName,
 			.pVulkanFunctions = &vulkanFunctions,
 			.instance = instance,
 			.pTypeExternalMemoryHandleTypes = nullptr,
-			.vulkanApiVersion = VK_API_VERSION_1_3
+			.vulkanApiVersion = VULKAN_VERSION_USING
 		};
 		if(vmaCreateAllocator(&createInfo, &allocator) != VK_SUCCESS) throw std::runtime_error("failed to create memory devices.allocator!");
 	}
 }
 Devices::~Devices(){
 	vmaDestroyAllocator(allocator);
-	vkDestroySurfaceKHR(instance, surface, nullptr);
 	vkDestroyDevice(logicalDevice, nullptr);
+#ifndef NDEBUG
+	DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
+#endif
+	vkDestroySurfaceKHR(instance, surface, nullptr);
 	vkDestroyInstance(instance, nullptr);
 }
 

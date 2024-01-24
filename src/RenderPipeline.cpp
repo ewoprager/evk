@@ -106,7 +106,7 @@ Interface::GraphicsPipeline::GraphicsPipeline(Interface &_vulkan, const Graphics
 	// ----- Input assembly info -----
 	VkPipelineInputAssemblyStateCreateInfo inputAssembly{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-		.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+		.topology = blueprint.primitiveTopology,
 		.primitiveRestartEnable = VK_FALSE
 	};
 	
@@ -127,7 +127,8 @@ Interface::GraphicsPipeline::GraphicsPipeline(Interface &_vulkan, const Graphics
 		.pushConstantRangeCount = uint32_t(blueprint.pipelineBlueprint.pushConstantRanges.size()),
 		.pPushConstantRanges = blueprint.pipelineBlueprint.pushConstantRanges.empty() ? nullptr : pushConstantRanges.data()
 	};
-	if(vkCreatePipelineLayout(vulkan.devices.logicalDevice, &pipelineLayoutInfo, nullptr, &layout) != VK_SUCCESS) throw std::runtime_error("failed to create pipeline layout!");
+	if(vkCreatePipelineLayout(vulkan.devices.logicalDevice, &pipelineLayoutInfo, nullptr, &layout) != VK_SUCCESS)
+		throw std::runtime_error("failed to create pipeline layout!");
 	
 	
 	// -----

@@ -2,6 +2,10 @@
 
 namespace EVK {
 
+template <typename T> T PositiveModulo(const T &lhs, const T &rhs){
+	return ((lhs % rhs) + rhs) % rhs;
+}
+
 VkDescriptorSetLayoutBinding Interface::Pipeline::DescriptorSet::UBODescriptor::LayoutBinding() const {
 	UniformBufferObject &ref = descriptorSet.pipeline.vulkan.uniformBufferObjects[index];
 	

@@ -9,23 +9,50 @@
 #include <thread>
 #include <functional>
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_vulkan.h>
 #include <MoltenVK/mvk_vulkan.h>
 #include <vma/vk_mem_alloc.h>
 
-#include <ESDL/ESDL_EventHandler.h>
 #include <SDL2/SDL_image.h>
 
 #define MAX_FRAMES_IN_FLIGHT 2
 
+#define VULKAN_VERSION_USING VK_API_VERSION_1_2
+
 /*
  Initialisation:
+	\/ For with SDL
 	- `SDL_Init(...)`
 	- `SDL_CreateWindow(..., SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | ...)`
+	/\
 	- Create an instance of `EVK::Devices`
-	- Create an array of `EVK::IImageBlueprint`s, the indices of the `EVK::IImageBlueprint`s in this array will correspond to the indices of the resulting corresponding image structures created in the `EVK::Interface` instance, which are the indices used in image descriptors.
+		\/ For with SDL
+		- Surface creation function:
+`[window](VkInstance instance) -> VkSurfaceKHR {
+	VkSurfaceKHR ret;
+	if(SDL_Vulkan_CreateSurface(window, instance, &ret) == SDL_FALSE)
+		throw std::runtime_error("failed to create window devices.surface!");
+	return ret;
+}`
+		- Extent getter function:
+ `[window]() -> VkExtent2D {
+	 int width, height;
+	 SDL_GL_GetDrawableSize(window, &width, &height);
+	 return (VkExtent2D){
+		 .width = uint32_t(width),
+		 .height = uint32_t(height)
+	 };
+ }`
+		/\
 	- Create an instance of `EVK::Interface`
+	- Add a window resize event callback to call method `EVK::Interface::FramebufferResizeCallback()` of the interface
+		\/ For with SDL
+		-   SDL_Event event;
+			event.type = SDL_WINDOWEVENT;
+			event.window.event = SDL_WINDOWEVENT_SIZE_CHANGED;
+		/\
+		\/ For with wxWidgets
+		- Event type: `wxEVT_SIZE`
+		/\
 	- Fill required vertex and index buffers with `Vulkan::FillVertexBuffer` / `Vulkan::FillIndexBuffer`
  
  In the render loop:
@@ -74,6 +101,7 @@ struct VertexBufferObject {
 	VkBuffer bufferHandle;
 	VkDeviceSize offset;
 	VmaAllocation allocation;
+	VkDeviceSize size;
 	
 	void CleanUp(const VmaAllocator &allocator){
 		vmaDestroyBuffer(allocator, bufferHandle, allocation);
@@ -220,6 +248,8 @@ private:
 	VkDevice logicalDevice;
 	VmaAllocator allocator;
 	
+	VkDebugUtilsMessengerEXT debugMessenger;
+	
 	std::function<VkExtent2D ()> getExtentFunction;
 	
 	// queues:
@@ -315,6 +345,7 @@ struct GraphicsPipelineBlueprint {
 	
 	std::vector<VkPipelineShaderStageCreateInfo> shaderStageCIs;
 	VkPipelineVertexInputStateCreateInfo vertexInputStateCI;
+	VkPrimitiveTopology primitiveTopology;
 	VkPipelineRasterizationStateCreateInfo rasterisationStateCI;
 	VkPipelineMultisampleStateCreateInfo multisampleStateCI;
 	VkPipelineColorBlendStateCreateInfo colourBlendStateCI;
@@ -375,7 +406,7 @@ class Interface {
 	class GraphicsPipeline;
 	class ComputePipeline;
 public:
-	Interface(InterfaceBlueprint &info);
+	Interface(const InterfaceBlueprint &info);
 	~Interface();
 	
 	// -----------------
@@ -426,7 +457,7 @@ public:
 	void CmdBeginBufferedRenderPass(int bufferedRenderPassIndex, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues);
 	void CmdBeginLayeredBufferedRenderPass(int layeredBufferedRenderPassIndex, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues, int layer);
 	void CmdEndRenderPass();
-	void BeginFinalRenderPass();
+	void BeginFinalRenderPass(const VkClearColorValue &clearColour={{0.0f, 0.0f, 0.0f, 0.0f}});
 	void EndFinalRenderPassAndFrame(std::optional<VkPipelineStageFlags> stagesWaitForCompute=std::optional<VkPipelineStageFlags>());
 	// ----- Render pass commands -----
 	void CmdBindVertexBuffer(uint32_t binding, int index);
@@ -459,7 +490,7 @@ public:
 	
 	
 	// ----- Misc -----
-	void FramebufferResizeCallback(SDL_Event event){ framebufferResized = true; }
+	void FramebufferResizeCallback(){ framebufferResized = true; }
 	
 private:
 	const Devices &devices;
@@ -768,7 +799,7 @@ private:
 	void TransitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, VkImageSubresourceRange subresourceRange);
 	void GenerateMipmaps(VkImage image, VkFormat imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels);
 	
-	void CreateSwapChain();
+	void CreateSwapChain(const VkExtent2D &actualExtent);
 	void CreateImageViews();
 	void CreateColourResources();
 	void CreateDepthResources();
@@ -778,16 +809,16 @@ private:
 	void RecreateSwapChain(){
 		VkExtent2D extent = devices.GetSurfaceExtent();
 		// in case we are minimised:
-		while(extent.width == 0 || extent.height == 0){
-			extent = devices.GetSurfaceExtent();
-			std::this_thread::sleep_for(std::chrono::milliseconds(100));
-		}
+//		while(extent.width == 0 || extent.height == 0){
+//			std::this_thread::sleep_for(std::chrono::milliseconds(100));
+//			extent = devices.GetSurfaceExtent();
+//		}
 		
 		vkDeviceWaitIdle(devices.logicalDevice);
 		
 		CleanUpSwapChain();
 		
-		CreateSwapChain();
+		CreateSwapChain(extent);
 		CreateImageViews();
 #ifdef MSAA
 		CreateColourResources();

@@ -56,20 +56,18 @@ VkPresentModeKHR ChooseSwapPresentMode(const std::vector<VkPresentModeKHR> &avai
 			return availablePresentMode;
 		}
 	}
+	for (const auto& availablePresentMode : availablePresentModes) {
+		if (availablePresentMode == VK_PRESENT_MODE_IMMEDIATE_KHR) {
+			return availablePresentMode;
+		}
+	}
 	
 	return VK_PRESENT_MODE_FIFO_KHR;
 }
 VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities, VkExtent2D actualExtent) {
-	if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
-		return capabilities.currentExtent;
-	} else {
-//		int width, height;
-//		SDL_GL_GetDrawableSize(window, &width, &height);
-//		
-//		VkExtent2D actualExtent = {
-//			static_cast<uint32_t>(width),
-//			static_cast<uint32_t>(height)
-//		};
+//	if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
+//		return capabilities.currentExtent;
+//	} else {
 		
 		actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
 		actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
@@ -77,14 +75,14 @@ VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities, VkExte
 		std::cout << "Extent = " << actualExtent.width << ", " << actualExtent.height << "\n";
 		
 		return actualExtent;
-	}
+//	}
 }
-void Interface::CreateSwapChain(){
+void Interface::CreateSwapChain(const VkExtent2D &actualExtent){
 	SwapChainSupportDetails swapChainSupport = devices.QuerySwapChainSupport();
 	
-	VkSurfaceFormatKHR surfaceFormat = ChooseSwapSurfaceFormat(swapChainSupport.formats);
-	VkPresentModeKHR presentMode = ChooseSwapPresentMode(swapChainSupport.presentModes);
-	VkExtent2D extent = ChooseSwapExtent(swapChainSupport.capabilities, devices.GetSurfaceExtent());
+	const VkSurfaceFormatKHR surfaceFormat = ChooseSwapSurfaceFormat(swapChainSupport.formats);
+	const VkPresentModeKHR presentMode = ChooseSwapPresentMode(swapChainSupport.presentModes);
+	const VkExtent2D extent = ChooseSwapExtent(swapChainSupport.capabilities, actualExtent);
 	
 	imageCount = swapChainSupport.capabilities.minImageCount + 1;
 	if(swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount){
@@ -123,7 +121,8 @@ void Interface::CreateSwapChain(){
 		createInfo.clipped = VK_TRUE;
 		createInfo.oldSwapchain = VK_NULL_HANDLE;
 		
-		if(vkCreateSwapchainKHR(devices.logicalDevice, &createInfo, nullptr, &swapChain) != VK_SUCCESS) throw std::runtime_error("failed to create swap chain!");
+		if(vkCreateSwapchainKHR(devices.logicalDevice, &createInfo, nullptr, &swapChain) != VK_SUCCESS)
+			throw std::runtime_error("failed to create swap chain!");
 	}
 	
 	// Getting swap chain images
@@ -149,7 +148,8 @@ VkImageView Interface::CreateImageView(const VkImageViewCreateInfo &imageViewCI/
 	 viewInfo.subresourceRange.layerCount = 1;
 	 */
 	VkImageView ret;
-	if(vkCreateImageView(devices.logicalDevice, &imageViewCI, nullptr, &ret) != VK_SUCCESS) throw std::runtime_error("failed to create texture image view!");
+	if(vkCreateImageView(devices.logicalDevice, &imageViewCI, nullptr, &ret) != VK_SUCCESS)
+		throw std::runtime_error("failed to create texture image view!");
 	return ret;
 }
 void Interface::CreateImage(const VkImageCreateInfo &imageCI, /*uint32_t width, uint32_t height, uint32_t mipLevels, VkSampleCountFlagBits numSamples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage,*/ VkMemoryPropertyFlags properties, VkImage &image, VmaAllocation &allocation) {
@@ -190,13 +190,16 @@ void Interface::CreateImage(const VkImageCreateInfo &imageCI, /*uint32_t width, 
 		.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
 		.priority = 1.0f
 	};
-	if(vmaCreateImage(devices.allocator, &imageCI, &allocInfo, &image, &allocation, nullptr)) throw std::runtime_error("failed to create image!");
+	if(const VkResult res = vmaCreateImage(devices.allocator, &imageCI, &allocInfo, &image, &allocation, nullptr);
+	   res != VK_SUCCESS)
+		throw std::runtime_error(std::string("failed to create image! VkResult = ") + std::to_string(res));
 }
 void Interface::GenerateMipmaps(VkImage image, VkFormat imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels){
 	// Check if image format supports linear blitting
 	VkFormatProperties formatProperties;
 	vkGetPhysicalDeviceFormatProperties(devices.physicalDevice, imageFormat, &formatProperties);
-	if(!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) throw std::runtime_error("texture image format does not support linear blitting!");
+	if(!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
+		throw std::runtime_error("texture image format does not support linear blitting!");
 	
 	VkCommandBuffer commandBuffer = BeginSingleTimeCommands();
 	
@@ -326,9 +329,11 @@ void Interface::CreateDepthResources(){
 	VkImageCreateInfo imageCI = {
 		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
 		.imageType = VK_IMAGE_TYPE_2D,
-		.extent.width = swapChainExtent.width,
-		.extent.height = swapChainExtent.height,
-		.extent.depth = 1,
+		.extent = {
+			.width = swapChainExtent.width,
+			.height = swapChainExtent.height,
+			.depth = 1
+		},
 		.mipLevels = 1,
 		.arrayLayers = 1,
 		.format = depthFormat,
@@ -574,13 +579,10 @@ void CubemapPNGImageBlueprint::Build(int index, Interface &interface){
 void ManualImageBlueprint::Build(int index, Interface &interface){
 	interface.BuildTextureImage(index, *this);
 }
-Interface::Interface(InterfaceBlueprint &blueprint) : devices(blueprint.devices) {
+Interface::Interface(const InterfaceBlueprint &blueprint) : devices(blueprint.devices) {
 	
-	SDL_Event event;
-	event.type = SDL_WINDOWEVENT;
-	event.window.event = SDL_WINDOWEVENT_SIZE_CHANGED;
-	ESDL::AddEventCallback((MemberFunction<Interface, void, SDL_Event>){this, &Interface::FramebufferResizeCallback}, event);
-	
+	// Initialising SDL_image
+	IMG_Init(IMG_INIT_PNG);
 	
 	// -----
 	// Creating the command pool
@@ -591,7 +593,8 @@ Interface::Interface(InterfaceBlueprint &blueprint) : devices(blueprint.devices)
 			.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
 			.queueFamilyIndex = blueprint.devices.queueFamilyIndices.graphicsAndComputeFamily.value()
 		};
-		if(vkCreateCommandPool(blueprint.devices.logicalDevice, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) throw std::runtime_error("failed to create command pool!");
+		if(vkCreateCommandPool(blueprint.devices.logicalDevice, &poolInfo, nullptr, &commandPool) != VK_SUCCESS)
+			throw std::runtime_error("failed to create command pool!");
 	}
 	
 	// -----
@@ -604,8 +607,10 @@ Interface::Interface(InterfaceBlueprint &blueprint) : devices(blueprint.devices)
 			.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
 			.commandBufferCount = MAX_FRAMES_IN_FLIGHT
 		};
-		if(vkAllocateCommandBuffers(blueprint.devices.logicalDevice, &allocInfo, commandBuffersFlying) != VK_SUCCESS) throw std::runtime_error("failed to allocate command buffers!");
-		if(vkAllocateCommandBuffers(blueprint.devices.logicalDevice, &allocInfo, computeCommandBuffersFlying) != VK_SUCCESS) throw std::runtime_error("failed to allocate compute command buffers!");
+		if(vkAllocateCommandBuffers(blueprint.devices.logicalDevice, &allocInfo, commandBuffersFlying) != VK_SUCCESS)
+			throw std::runtime_error("failed to allocate command buffers!");
+		if(vkAllocateCommandBuffers(blueprint.devices.logicalDevice, &allocInfo, computeCommandBuffersFlying) != VK_SUCCESS)
+			throw std::runtime_error("failed to allocate compute command buffers!");
 	}
 	
 	
@@ -613,7 +618,7 @@ Interface::Interface(InterfaceBlueprint &blueprint) : devices(blueprint.devices)
 	// -----
 	// Creating the swap chain, getting swap chain images and saving chosen format and extent of swap chain
 	// -----
-	CreateSwapChain();
+	CreateSwapChain(devices.GetSurfaceExtent());
 	
 	
 	// -----
@@ -637,7 +642,11 @@ Interface::Interface(InterfaceBlueprint &blueprint) : devices(blueprint.devices)
 		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
 		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
 		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+#ifdef MSAA
 		.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+#else
+		.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+#endif
 	};
 	VkAttachmentReference colourAttachmentRef{
 		.attachment = 0,
@@ -893,6 +902,8 @@ void Interface::CleanUpSwapChain(){
 	}
 }
 Interface::~Interface(){
+	vkDeviceWaitIdle(devices.logicalDevice);
+	
 	CleanUpSwapChain();
 	
 	for(BufferedRenderPass &brp : bufferedRenderPasses) brp.CleanUp(devices.logicalDevice);
@@ -953,7 +964,13 @@ void Interface::FillExistingDeviceLocalBuffer(VkBuffer bufferHandle, void *data,
 void Interface::FillVertexBuffer(int vertexBufferIndex, void *vertices, const VkDeviceSize &size, const VkDeviceSize &offset){
 	// destroying old vertex buffer if it exists
 	if(vertexBufferObjects[vertexBufferIndex]){
-		vmaDestroyBuffer(devices.allocator, vertexBufferObjects[vertexBufferIndex]->bufferHandle, vertexBufferObjects[vertexBufferIndex]->allocation);
+		if(vertexBufferObjects[vertexBufferIndex]->size == size){
+			FillExistingDeviceLocalBuffer(vertexBufferObjects[vertexBufferIndex]->bufferHandle, vertices, size);
+			vertexBufferObjects[vertexBufferIndex]->offset = offset;
+			return;
+		} else {
+			vmaDestroyBuffer(devices.allocator, vertexBufferObjects[vertexBufferIndex]->bufferHandle, vertexBufferObjects[vertexBufferIndex]->allocation);
+		}
 	} else {
 		vertexBufferObjects[vertexBufferIndex] = VertexBufferObject();
 	}
@@ -961,16 +978,23 @@ void Interface::FillVertexBuffer(int vertexBufferIndex, void *vertices, const Vk
 	CreateAndFillDeviceLocalBuffer(vertexBufferObjects[vertexBufferIndex]->bufferHandle, vertexBufferObjects[vertexBufferIndex]->allocation, vertices, size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 	
 	vertexBufferObjects[vertexBufferIndex]->offset = offset;
+	vertexBufferObjects[vertexBufferIndex]->size = size;
 }
 void Interface::FillIndexBuffer(int indexBufferIndex, uint32_t *indices, size_t indexCount, const VkDeviceSize &offset){
 	// destroying old index buffer if it exists
 	if(indexBufferObjects[indexBufferIndex]){
-		vmaDestroyBuffer(devices.allocator, indexBufferObjects[indexBufferIndex]->bufferHandle, indexBufferObjects[indexBufferIndex]->allocation);
+		if(indexBufferObjects[indexBufferIndex]->indexCount == indexCount){
+			FillExistingDeviceLocalBuffer(indexBufferObjects[indexBufferIndex]->bufferHandle, indices, VkDeviceSize(indexCount * sizeof(int32_t)));
+			indexBufferObjects[indexBufferIndex]->offset = offset;
+			return;
+		} else {
+			vmaDestroyBuffer(devices.allocator, indexBufferObjects[indexBufferIndex]->bufferHandle, indexBufferObjects[indexBufferIndex]->allocation);
+		}
 	} else {
 		indexBufferObjects[indexBufferIndex] = IndexBufferObject();
 	}
 	
-	CreateAndFillDeviceLocalBuffer(indexBufferObjects[indexBufferIndex]->bufferHandle, indexBufferObjects[indexBufferIndex]->allocation, indices, (VkDeviceSize)(indexCount*sizeof(uint32_t)), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+	CreateAndFillDeviceLocalBuffer(indexBufferObjects[indexBufferIndex]->bufferHandle, indexBufferObjects[indexBufferIndex]->allocation, indices, VkDeviceSize(indexCount * sizeof(uint32_t)), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 	
 	indexBufferObjects[indexBufferIndex]->offset = offset;
 	indexBufferObjects[indexBufferIndex]->indexCount = (uint32_t)indexCount;
@@ -991,7 +1015,6 @@ bool Interface::BeginFrame(){
 	if(result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
 		framebufferResized = false;
 		RecreateSwapChain();
-		//currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 		return false;
 	} else if(result != VK_SUCCESS) throw std::runtime_error("failed to acquire swap chain image!");
 	
@@ -1006,13 +1029,14 @@ bool Interface::BeginFrame(){
 		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, // Optional; this bit means we will submit this buffer once between each reset
 		.pInheritanceInfo = nullptr // Optional
 	};
-	if(vkBeginCommandBuffer(commandBuffersFlying[currentFrame], &beginInfo) != VK_SUCCESS) throw std::runtime_error("failed to begin recording command buffer!");
+	if(vkBeginCommandBuffer(commandBuffersFlying[currentFrame], &beginInfo) != VK_SUCCESS)
+		throw std::runtime_error("failed to begin recording command buffer!");
 	
 	return true;
 }
-void Interface::BeginFinalRenderPass(){
+void Interface::BeginFinalRenderPass(const VkClearColorValue &clearColour){
 	VkClearValue clearValues[2] = {};
-	clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+	clearValues[0].color = clearColour;
 	clearValues[1].depthStencil = {1.0f, 0};
 	
 	VkRenderPassBeginInfo renderPassInfo{
