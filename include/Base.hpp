@@ -809,10 +809,10 @@ private:
 	void RecreateSwapChain(){
 		VkExtent2D extent = devices.GetSurfaceExtent();
 		// in case we are minimised:
-//		while(extent.width == 0 || extent.height == 0){
-//			std::this_thread::sleep_for(std::chrono::milliseconds(100));
-//			extent = devices.GetSurfaceExtent();
-//		}
+		while(extent.width == 0 || extent.height == 0){
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
+			extent = devices.GetSurfaceExtent();
+		}
 		
 		vkDeviceWaitIdle(devices.logicalDevice);
 		
