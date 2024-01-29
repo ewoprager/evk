@@ -1043,8 +1043,10 @@ void Interface::BeginFinalRenderPass(const VkClearColorValue &clearColour){
 		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
 		.renderPass = renderPass,
 		.framebuffer = swapChainFramebuffers[currentFrameImageIndex],
-		.renderArea.offset = {0, 0},
-		.renderArea.extent = swapChainExtent,
+		.renderArea = (VkRect2D){
+			.offset = {0, 0},
+			.extent = swapChainExtent
+		},
 		.clearValueCount = 2,
 		.pClearValues = clearValues
 	};
@@ -1053,8 +1055,8 @@ void Interface::BeginFinalRenderPass(const VkClearColorValue &clearColour){
 	VkViewport viewport{
 		.x = 0.0f,
 		.y = 0.0f,
-		.width = (float)swapChainExtent.width,
-		.height = (float)swapChainExtent.height,
+		.width = float(swapChainExtent.width),
+		.height = float(swapChainExtent.height),
 		.minDepth = 0.0f,
 		.maxDepth = 1.0f
 	};
@@ -1084,7 +1086,7 @@ void Interface::EndFinalRenderPassAndFrame(std::optional<VkPipelineStageFlags> s
 	
 	VkSubmitInfo submitInfo{
 		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-		.waitSemaphoreCount = (uint32_t)waitSemaphores.size(),
+		.waitSemaphoreCount = uint32_t(waitSemaphores.size()),
 		.pWaitSemaphores = waitSemaphores.data(),
 		.pWaitDstStageMask = waitStages.data(),
 		.commandBufferCount = 1,
@@ -1107,7 +1109,14 @@ void Interface::EndFinalRenderPassAndFrame(std::optional<VkPipelineStageFlags> s
 		.pImageIndices = &currentFrameImageIndex,
 		.pResults = nullptr // Optional
 	};
-	vkQueuePresentKHR(devices.presentQueue, &presentInfo);
+	const VkResult result = vkQueuePresentKHR(devices.presentQueue, &presentInfo);
+	
+	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
+		framebufferResized = false;
+		RecreateSwapChain();
+	} else if (result != VK_SUCCESS) {
+		throw std::runtime_error("failed to present swap chain image!");
+	}
 	
 	currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }

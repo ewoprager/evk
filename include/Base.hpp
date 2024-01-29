@@ -19,6 +19,13 @@
 #define VULKAN_VERSION_USING VK_API_VERSION_1_2
 
 /*
+ !!! BEWARE !!!
+	 Be careful about the scopes of large blueprints that contain Vulkan 'create info's of various kinds.
+	 If a Vulkan 'create info' has a pointer to some stuff, that pointer must remain valid at the point
+	 of use of the outer-most blueprint!
+ */
+
+/*
  Initialisation:
 	\/ For with SDL
 	- `SDL_Init(...)`
@@ -229,7 +236,7 @@ public:
 #endif
 	
 	uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
-	VkFormat FindSupportedFormat(const VkFormat *candidates, int n, const VkImageTiling &tiling, const VkFormatFeatureFlags &features) const;
+	VkFormat FindSupportedFormat(const std::vector<VkFormat> &candidates, const VkImageTiling &tiling, const VkFormatFeatureFlags &features) const;
 	VkFormat FindDepthFormat() const;
 	
 	SwapChainSupportDetails QuerySwapChainSupport() const;
@@ -584,9 +591,9 @@ private:
 		
 		// ----- Methods to call after Init() -----
 		// Bind the pipeline for subsequent render calls
-		virtual void Bind() {}
+		virtual void Bind() = 0;
 		// Set which descriptor sets are bound for subsequent render calls
-		virtual void BindDescriptorSets(int first, int number, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) {}
+		virtual void BindDescriptorSets(int first, int number, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) = 0;
 		void UpdateDescriptorSets(); // have to do this every time any elements of any descriptors are changed, e.g. when an image view is re-created upon window resize
 		// Set push constant data
 		template <typename T> void CmdPushConstants(int index, T *data){

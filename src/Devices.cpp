@@ -1,17 +1,21 @@
+#include <set>
+#include <fstream>
+
 #include <Base.hpp>
 
-#include <set>
+static std::vector<char> ReadFile(const char *filename){
+	std::ifstream ifs(filename, std::ios::binary | std::ios::ate);
+	std::ifstream::pos_type pos = ifs.tellg();
 
-static uint8_t *ReadFile(const char *filename, size_t &sizeOut){
-	FILE *fptr = fopen(filename, "r");
-	if(!fptr) throw std::runtime_error(std::string("failed to open file: ") + std::string(filename));
-	fseek(fptr, 0, SEEK_END);
-	sizeOut = (size_t)ftell(fptr);
-	uint8_t *ret = (uint8_t *)malloc(sizeOut);
-	fseek(fptr, 0, SEEK_SET);
-	fread(ret, 1, sizeOut, fptr);
-	fclose(fptr);
-	return ret;
+	if(!pos)
+		return std::vector<char>{};
+
+	std::vector<char> result(pos);
+
+	ifs.seekg(0, std::ios::beg);
+	ifs.read(result.data(), pos);
+
+	return result;
 }
 
 #ifndef NDEBUG
@@ -103,14 +107,18 @@ SwapChainSupportDetails Devices::QuerySwapChainSupport() const { return QueryDev
 static bool IsDeviceSuitable(const VkPhysicalDevice &device, const VkSurfaceKHR &surface){
 	QueueFamilyIndices indices = FindQueueFamilies(device, surface);
 	
+	const bool extensionsSupported = CheckDeviceExtensionSupport(device);
+	
 	bool swapChainAdequate = false;
-	SwapChainSupportDetails swapChainSupport = QueryDevicesSwapChainSupport(device, surface);
-	swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
+	if(extensionsSupported){
+		SwapChainSupportDetails swapChainSupport = QueryDevicesSwapChainSupport(device, surface);
+		swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
+	}
 	
 	VkPhysicalDeviceFeatures supportedFeatures;
 	vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
 	
-	return indices.IsComplete() && CheckDeviceExtensionSupport(device) && swapChainAdequate
+	return indices.IsComplete() && extensionsSupported && swapChainAdequate
 	&& supportedFeatures.samplerAnisotropy;
 	// need to add all supported features here?
 }
@@ -284,7 +292,8 @@ Devices::Devices(const char *applicationName,
 			.pTypeExternalMemoryHandleTypes = nullptr,
 			.vulkanApiVersion = VULKAN_VERSION_USING
 		};
-		if(vmaCreateAllocator(&createInfo, &allocator) != VK_SUCCESS) throw std::runtime_error("failed to create memory devices.allocator!");
+		if(vmaCreateAllocator(&createInfo, &allocator) != VK_SUCCESS)
+			throw std::runtime_error("failed to create memory devices.allocator!");
 	}
 }
 Devices::~Devices(){
@@ -298,18 +307,17 @@ Devices::~Devices(){
 }
 
 VkShaderModule Devices::CreateShaderModule(const char *filename) const {
-	size_t size;
-	uint8_t *bytes = ReadFile(filename, size);
+	const std::vector<char> bytes = ReadFile(filename);
 	
 	VkShaderModule ret;
 	VkShaderModuleCreateInfo createInfo{
 		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-		.codeSize = size,
-		.pCode = (uint32_t *)bytes
+		.codeSize = uint32_t(bytes.size()),
+		.pCode = (uint32_t *)(bytes.data())
 	};
-	if(vkCreateShaderModule(logicalDevice, &createInfo, nullptr, &ret) != VK_SUCCESS) throw std::runtime_error("failed to create shader module!");
+	if(vkCreateShaderModule(logicalDevice, &createInfo, nullptr, &ret) != VK_SUCCESS)
+		throw std::runtime_error("failed to create shader module!");
 	
-	free(bytes);
 	return ret;
 }
 #ifdef MSAA
@@ -337,24 +345,22 @@ uint32_t Devices::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags prop
 	}
 	throw std::runtime_error("failed to find suitable memory type!");
 }
-VkFormat Devices::FindSupportedFormat(const VkFormat *candidates, int n, const VkImageTiling &tiling, const VkFormatFeatureFlags &features) const {
-	for(int i=0; i<n; i++){
+VkFormat Devices::FindSupportedFormat(const std::vector<VkFormat> &candidates, const VkImageTiling &tiling, const VkFormatFeatureFlags &features) const {
+	for(VkFormat format : candidates){
 		VkFormatProperties props;
-		vkGetPhysicalDeviceFormatProperties(physicalDevice, candidates[i], &props);
+		vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
 		
 		if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures & features) == features) {
-			return candidates[i];
+			return format;
 		} else if (tiling == VK_IMAGE_TILING_OPTIMAL && (props.optimalTilingFeatures & features) == features) {
-			return candidates[i];
+			return format;
 		}
 	}
 	
 	throw std::runtime_error("failed to find supported format!");
 }
 VkFormat Devices::FindDepthFormat() const {
-	const VkFormat candidates[3] = {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT};
-	return FindSupportedFormat(candidates,
-							   3,
+	return FindSupportedFormat({VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT},
 							   VK_IMAGE_TILING_OPTIMAL,
 							   VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
 }
