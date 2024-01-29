@@ -391,6 +391,13 @@ struct LayeredBufferedRenderPassBlueprint {
 	VkImageAspectFlags imageAspectFlags;
 };
 struct InterfaceBlueprint {
+	// removing copy and move constructors and assignment operators so it's harder to use the blueprint in a different scope
+	InterfaceBlueprint(const Devices &_devices) : devices(_devices) {}
+	InterfaceBlueprint(InterfaceBlueprint &&other) = delete;
+	InterfaceBlueprint &operator=(InterfaceBlueprint &&other) = delete;
+	InterfaceBlueprint(const InterfaceBlueprint &other) = delete;
+	InterfaceBlueprint &operator=(const InterfaceBlueprint &other) = delete;
+	
 	const Devices &devices;
 	
 	std::vector<UniformBufferObjectBlueprint> uboBlueprints;
