@@ -8,7 +8,9 @@ Interface::Pipeline::DescriptorSet::DescriptorSet(Pipeline &_pipeline, int _inde
 	for(int i=0; i<blueprint.size(); i++){
 		switch(blueprint[i].type){
 			case DescriptorType::UBO: {
-				UniformBufferObject &ref = _pipeline.vulkan.uniformBufferObjects[blueprint[i].indicesExtra[0]];
+				if(!_pipeline.vulkan.uniformBufferObjects[blueprint[i].indicesExtra[0]])
+					throw std::runtime_error("Cannot make descriptor set as UBO hasn't been created.");
+				UniformBufferObject &ref = _pipeline.vulkan.uniformBufferObjects[blueprint[i].indicesExtra[0]].value();
 				if(ref.dynamic){
 					uboDynamicAlignment = ref.dynamic->alignment;
 				} else {

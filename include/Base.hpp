@@ -126,8 +126,6 @@ struct IndexBufferObject {
 };
 
 struct UniformBufferObject {
-	UniformBufferObject(){}
-	
 	VkBuffer buffersFlying[MAX_FRAMES_IN_FLIGHT];
 	VmaAllocation allocationsFlying[MAX_FRAMES_IN_FLIGHT];
 	VmaAllocationInfo allocationInfosFlying[MAX_FRAMES_IN_FLIGHT];
@@ -144,8 +142,6 @@ struct UniformBufferObject {
 	}
 };
 struct StorageBufferObject {
-	StorageBufferObject(){}
-	
 	VkBuffer buffersFlying[MAX_FRAMES_IN_FLIGHT];
 	VmaAllocation allocationsFlying[MAX_FRAMES_IN_FLIGHT];
 	VmaAllocationInfo allocationInfosFlying[MAX_FRAMES_IN_FLIGHT];
@@ -155,13 +151,34 @@ struct StorageBufferObject {
 		for(int i=0; i<MAX_FRAMES_IN_FLIGHT; i++) vmaDestroyBuffer(allocator, buffersFlying[i], allocationsFlying[i]);
 	}
 };
-struct TextureImage {
-	TextureImage(){}
+
+struct PNGImageBlueprint {
+	std::string imageFilename;
 	
+};
+struct DataImageBlueprint {
+	uint8_t *data;
+	uint32_t width;
+	uint32_t height;
+	uint32_t pitch;
+	VkFormat format;
+	bool mip;
+};
+struct CubemapPNGImageBlueprint {
+	std::array<std::string, 6> imageFilenames;
+};
+struct ManualImageBlueprint {
+	VkImageCreateInfo imageCI; // is this safe? given that we pass these around
+	VkImageViewType imageViewType;
+	VkMemoryPropertyFlags properties;
+	VkImageAspectFlags aspectFlags;
+};
+struct TextureImage {
 	VkImage image;
 	VmaAllocation allocation;
 	VkImageView view;
 	uint32_t mipLevels;
+	ManualImageBlueprint blueprint;
 	
 	void CleanUp(const VkDevice &logicalDevice, const VmaAllocator &allocator){
 		vkDestroyImageView(logicalDevice, view, nullptr);
@@ -169,8 +186,6 @@ struct TextureImage {
 	}
 };
 struct BufferedRenderPass {
-	BufferedRenderPass(){}
-	
 	uint32_t width, height;
 	VkRenderPass renderPass;
 	VkFramebuffer frameBuffersFlying[MAX_FRAMES_IN_FLIGHT];
@@ -181,7 +196,6 @@ struct BufferedRenderPass {
 	}
 };
 struct LayeredBufferedRenderPass {
-	LayeredBufferedRenderPass(){}
 	LayeredBufferedRenderPass(int layersN) {
 		layers = std::vector<Layer>(layersN);
 	}
@@ -273,46 +287,6 @@ private:
 	friend class Interface;
 };
 
-struct IImageBlueprint {
-private:
-	virtual void Build(int index, Interface &interface){}
-	
-	friend class Interface;
-};
-struct PNGImageBlueprint : public IImageBlueprint {
-	PNGImageBlueprint(std::string _imageFilename) : imageFilename(_imageFilename) {}
-	
-private:
-	std::string imageFilename;
-	
-	void Build(int index, Interface &interface) override;
-	
-	friend class Interface;
-};
-struct CubemapPNGImageBlueprint : public IImageBlueprint {
-	CubemapPNGImageBlueprint(std::array<std::string, 6> _imageFilenames) : imageFilenames(_imageFilenames) {}
-	
-private:
-	std::array<std::string, 6> imageFilenames;
-	
-	void Build(int index, Interface &interface) override;
-	
-	friend class Interface;
-};
-struct ManualImageBlueprint : public IImageBlueprint {
-	ManualImageBlueprint(const VkImageCreateInfo &_imageCI, const VkImageViewType &_imageViewType, const VkMemoryPropertyFlags &_properties, const VkImageAspectFlags &_aspectFlags) : imageCI(_imageCI), imageViewType(_imageViewType), properties(_properties), aspectFlags(_aspectFlags) {}
-	
-private:
-	VkImageCreateInfo imageCI;
-	VkImageViewType imageViewType;
-	VkMemoryPropertyFlags properties;
-	VkImageAspectFlags aspectFlags;
-	
-	void Build(int index, Interface &interface) override;
-	
-	friend class Interface;
-};
-
 enum class DescriptorType {
 	UBO,
 	SBO,
@@ -393,29 +367,21 @@ struct LayeredBufferedRenderPassBlueprint {
 struct InterfaceBlueprint {
 	// removing copy and move constructors and assignment operators so it's harder to use the blueprint in a different scope
 	InterfaceBlueprint(const Devices &_devices) : devices(_devices) {}
-	InterfaceBlueprint(InterfaceBlueprint &&other) = delete;
-	InterfaceBlueprint &operator=(InterfaceBlueprint &&other) = delete;
-	InterfaceBlueprint(const InterfaceBlueprint &other) = delete;
-	InterfaceBlueprint &operator=(const InterfaceBlueprint &other) = delete;
 	
 	const Devices &devices;
 	
-	std::vector<UniformBufferObjectBlueprint> uboBlueprints;
-	std::vector<StorageBufferObjectBlueprint> sboBlueprints;
+	int uniformBufferObjectsN;
+	int storageBufferObjectsN;
 	std::vector<VkSamplerCreateInfo> samplerBlueprints;
-	std::vector<BufferedRenderPassBlueprint> bufferedRenderPassBlueprints;
-	std::vector<LayeredBufferedRenderPassBlueprint> layeredBufferedRenderPassBlueprints;
-	std::vector<GraphicsPipelineBlueprint> graphicsPipelineBlueprints;
-	std::vector<ComputePipelineBlueprint> computePipelineBlueprints;
-	std::vector<std::shared_ptr<IImageBlueprint>> imageBlueprintPtrs;
-	
+	int bufferedRenderPassesN;
+	int layeredBufferedRenderPassesN;
+	int graphicsPipelinesN;
+	int computePipelinesN;
+	int imagesN;
 	int vertexBuffersN;
 	int indexBuffersN;
 };
 class Interface {
-	friend class PNGImageBlueprint;
-	friend class CubemapPNGImageBlueprint;
-	friend class ManualImageBlueprint;
 	class Pipeline;
 	class GraphicsPipeline;
 	class ComputePipeline;
@@ -435,28 +401,42 @@ public:
 	
 	// ----- Modifying UBO data -----
 	template <typename T> T *GetUniformBufferObjectPointer(int uniformBufferObjectIndex) const {
-		return (T *)uniformBufferObjects[uniformBufferObjectIndex].allocationInfosFlying[currentFrame].pMappedData;
+		if(!uniformBufferObjects[uniformBufferObjectIndex])
+			throw std::runtime_error("Cannot get UBO pointer; UBO not created");
+		return (T *)uniformBufferObjects[uniformBufferObjectIndex]->allocationInfosFlying[currentFrame].pMappedData;
 	}
 	template <typename T> std::vector<T *> GetUniformBufferObjectPointers(int uniformBufferObjectIndex) const {
+		if(!uniformBufferObjects[uniformBufferObjectIndex])
+			throw std::runtime_error("Cannot get UBO pointers; UBO not created");
 		std::vector<T *> ret {};
-		if(uniformBufferObjects[uniformBufferObjectIndex].dynamic){
-			const int number = uniformBufferObjects[uniformBufferObjectIndex].dynamic->repeatsN;
+		if(uniformBufferObjects[uniformBufferObjectIndex]->dynamic){
+			const int number = uniformBufferObjects[uniformBufferObjectIndex]->dynamic->repeatsN;
 			ret.resize(number);
-			uint8_t *start = (uint8_t *)uniformBufferObjects[uniformBufferObjectIndex].allocationInfosFlying[currentFrame].pMappedData;
+			uint8_t *start = (uint8_t *)uniformBufferObjects[uniformBufferObjectIndex]->allocationInfosFlying[currentFrame].pMappedData;
 			for(T* &ptr : ret){
 				ptr = (T *)start;
-				start += uniformBufferObjects[uniformBufferObjectIndex].dynamic->alignment;
+				start += uniformBufferObjects[uniformBufferObjectIndex]->dynamic->alignment;
 			}
 		} else {
-			ret.push_back((T *)uniformBufferObjects[uniformBufferObjectIndex].allocationInfosFlying[currentFrame].pMappedData);
+			ret.push_back((T *)uniformBufferObjects[uniformBufferObjectIndex]->allocationInfosFlying[currentFrame].pMappedData);
 		}
 		return ret;
 	}
 	
 	
+	// ----- Structures -----
+	void BuildUBO(int index, const UniformBufferObjectBlueprint &blueprint);
+	void BuildSBO(int index, const StorageBufferObjectBlueprint &blueprint);
+	void BuildTextureSampler(int index, const VkSamplerCreateInfo &samplerCI);
+	void BuildBufferedRenderPass(int index, const BufferedRenderPassBlueprint &blueprint); // returns if it resises with the window
+	void BuildLayeredBufferedRenderPass(int index, const LayeredBufferedRenderPassBlueprint &blueprint);
+	
+	
 	// ---------------------
 	// ----- Pipelines -----
 	// ---------------------
+	void BuildGraphicsPipeline(int index, const GraphicsPipelineBlueprint &blueprint);
+	void BuildComputePipeline(int index, const ComputePipelineBlueprint &blueprint);
 	GraphicsPipeline &GP(int index) const { return *graphicsPipelines[index]; }
 	ComputePipeline &CP(int index) const { return *computePipelines[index]; }
 	
@@ -487,28 +467,38 @@ public:
 	void CmdDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ);
 	
 	
+	// ------------------
+	// ----- Images -----
+	// ------------------
+	void BuildTextureImageFromFile(int index, const PNGImageBlueprint &blueprint);
+	void BuildCubemapImageFromFiles(int index, const CubemapPNGImageBlueprint &blueprint);
+	void BuildTextureImage(int index, ManualImageBlueprint blueprint);
+	void BuildDataImage(int index, const DataImageBlueprint &blueprint);
+	
+	
 	// ----- Getters -----
 	const uint32_t &GetExtentWidth() const { return swapChainExtent.width; }
 	const uint32_t &GetExtentHeight() const { return swapChainExtent.height; }
 	bool GetVertexBufferCreated(int index) const { return (bool)vertexBufferObjects[index]; }
 	bool GetIndexBufferCreated(int index) const { return (bool)indexBufferObjects[index]; }
-	std::optional<VkDeviceSize> GetUniformBufferObjectDynamicAlignment(int index) const { return uniformBufferObjects[index].dynamic ? uniformBufferObjects[index].dynamic.value().alignment : std::optional<VkDeviceSize>(); }
+	std::optional<VkDeviceSize> GetUniformBufferObjectDynamicAlignment(int index) const { return uniformBufferObjects[index]->dynamic ? uniformBufferObjects[index]->dynamic.value().alignment : std::optional<VkDeviceSize>(); }
 	size_t GetUniformBufferObjectCount(){ return uniformBufferObjects.size(); }
 	uint32_t GetIndexBufferCount(int index) const {
 		if(!indexBufferObjects[index]) return 0;
 		return indexBufferObjects[index]->indexCount;
 	}
-	const VkRenderPass &GetBufferedRenderPassHandle(int index) const { return bufferedRenderPasses[index].renderPass; }
-	const VkRenderPass &GetLayeredBufferedRenderPassHandle(int index) const { return layeredBufferedRenderPasses[index].renderPass; }
+	const VkRenderPass &GetBufferedRenderPassHandle(int index) const { return bufferedRenderPasses[index]->renderPass; }
+	const VkRenderPass &GetLayeredBufferedRenderPassHandle(int index) const { return layeredBufferedRenderPasses[index]->renderPass; }
 	const VkDevice &GetLogicalDevice() const { return devices.logicalDevice; }
 	
 	
 	// ----- Misc -----
 	void FramebufferResizeCallback(){ framebufferResized = true; }
 	
-private:
+	
 	const Devices &devices;
 	
+private:
 	VkSwapchainKHR swapChain;
 	
 	std::vector<VkImage> swapChainImages;
@@ -519,12 +509,9 @@ private:
 		int index;
 		BufferedRenderPassBlueprint blueprint;
 	};
-	struct ResisingImage {
-		int index;
-		ManualImageBlueprint blueprint;
-	};
+	
 	std::vector<ResisingBRP> resisingBRPs;
-	std::vector<ResisingImage> resisingImages;
+	std::vector<int> resisingImages;
 	
 	uint32_t imageCount;
 	VkFormat swapChainImageFormat;
@@ -553,30 +540,15 @@ private:
 	uint32_t currentFrame = 0;
 	
 	// ----- structures -----
-	std::vector<UniformBufferObject> uniformBufferObjects;
-	void BuildUBO(int index, const UniformBufferObjectBlueprint &blueprint);
-	
-	std::vector<StorageBufferObject> storageBufferObjects;
-	void BuildSBO(int index, const StorageBufferObjectBlueprint &blueprint);
-	
-	std::vector<TextureImage> textureImages;
-	void BuildTextureImageFromFile(int index, const PNGImageBlueprint &blueprint);
-	void BuildCubemapImageFromFiles(int index, const CubemapPNGImageBlueprint &blueprint);
-	void BuildTextureImage(int index, ManualImageBlueprint blueprint);
-	
+	std::vector<std::optional<UniformBufferObject>> uniformBufferObjects;
+	std::vector<std::optional<StorageBufferObject>> storageBufferObjects;
+	std::vector<std::optional<TextureImage>> textureImages;
 	std::vector<VkSampler> textureSamplers;
-	void BuildTextureSampler(int index, const VkSamplerCreateInfo &samplerCI);
+	std::vector<std::optional<BufferedRenderPass>> bufferedRenderPasses;
+	std::vector<std::optional<LayeredBufferedRenderPass>> layeredBufferedRenderPasses;
 	
-	std::vector<BufferedRenderPass> bufferedRenderPasses;
-	bool BuildBufferedRenderPass(int index, const BufferedRenderPassBlueprint &blueprint); // returns if it resises with the window
-	
-	std::vector<LayeredBufferedRenderPass> layeredBufferedRenderPasses;
-	void BuildLayeredBufferedRenderPass(int index, const LayeredBufferedRenderPassBlueprint &blueprint);
-	
-	// vertex buffers
+	// vertex / index buffers
 	std::vector<std::optional<VertexBufferObject>> vertexBufferObjects;
-	
-	// index buffers
 	std::vector<std::optional<IndexBufferObject>> indexBufferObjects;
 	
 	class Pipeline {

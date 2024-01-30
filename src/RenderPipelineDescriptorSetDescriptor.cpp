@@ -7,7 +7,9 @@ template <typename T> T PositiveModulo(const T &lhs, const T &rhs){
 }
 
 VkDescriptorSetLayoutBinding Interface::Pipeline::DescriptorSet::UBODescriptor::LayoutBinding() const {
-	UniformBufferObject &ref = descriptorSet.pipeline.vulkan.uniformBufferObjects[index];
+	if(!descriptorSet.pipeline.vulkan.uniformBufferObjects[index])
+		throw std::runtime_error("Cannot get UBO layout binding as it hasn't been created.");
+	UniformBufferObject &ref = descriptorSet.pipeline.vulkan.uniformBufferObjects[index].value();
 	
 	return (VkDescriptorSetLayoutBinding){
 		.binding = binding,
@@ -18,7 +20,9 @@ VkDescriptorSetLayoutBinding Interface::Pipeline::DescriptorSet::UBODescriptor::
 	};
 }
 VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::UBODescriptor::DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const {
-	UniformBufferObject &ref = descriptorSet.pipeline.vulkan.uniformBufferObjects[index];
+	if(!descriptorSet.pipeline.vulkan.uniformBufferObjects[index])
+		throw std::runtime_error("Cannot get UBO descriptor write as it hasn't been created.");
+	UniformBufferObject &ref = descriptorSet.pipeline.vulkan.uniformBufferObjects[index].value();
 	
 	bufferInfoBuffer[bufferInfoBufferIndex].buffer = ref.buffersFlying[flight];
 	bufferInfoBuffer[bufferInfoBufferIndex].offset = 0;
@@ -35,7 +39,9 @@ VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::UBODescriptor::Descript
 	};
 }
 VkDescriptorPoolSize Interface::Pipeline::DescriptorSet::UBODescriptor::PoolSize() const {
-	UniformBufferObject &ref = descriptorSet.pipeline.vulkan.uniformBufferObjects[index];
+	if(!descriptorSet.pipeline.vulkan.uniformBufferObjects[index])
+		throw std::runtime_error("Cannot get UBO pool size as it hasn't been created.");
+	UniformBufferObject &ref = descriptorSet.pipeline.vulkan.uniformBufferObjects[index].value();
 	
 	return (VkDescriptorPoolSize){
 		.type = ref.dynamic ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -53,7 +59,9 @@ VkDescriptorSetLayoutBinding Interface::Pipeline::DescriptorSet::SBODescriptor::
 	};
 }
 VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::SBODescriptor::DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const {
-	StorageBufferObject &ref = descriptorSet.pipeline.vulkan.storageBufferObjects[index];
+	if(!descriptorSet.pipeline.vulkan.storageBufferObjects[index])
+		throw std::runtime_error("Cannot get SBO descriptor write as it hasn't been created.");
+	StorageBufferObject &ref = descriptorSet.pipeline.vulkan.storageBufferObjects[index].value();
 	
 	bufferInfoBuffer[bufferInfoBufferIndex].buffer = ref.buffersFlying[PositiveModulo(flight + flightOffset, MAX_FRAMES_IN_FLIGHT)];
 	bufferInfoBuffer[bufferInfoBufferIndex].offset = 0;
@@ -88,8 +96,11 @@ VkDescriptorSetLayoutBinding Interface::Pipeline::DescriptorSet::TextureImagesDe
 VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::TextureImagesDescriptor::DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const {
 	const int startIndex = imageInfoBufferIndex;
 	for(int k=0; k<indices.size(); k++){
+		if(!descriptorSet.pipeline.vulkan.textureImages[indices[k]])
+			throw std::runtime_error("Cannot get texture image descriptor write as not all it's images have been created.");
+		
 		imageInfoBuffer[imageInfoBufferIndex].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		imageInfoBuffer[imageInfoBufferIndex].imageView = descriptorSet.pipeline.vulkan.textureImages[indices[k]].view;
+		imageInfoBuffer[imageInfoBufferIndex].imageView = descriptorSet.pipeline.vulkan.textureImages[indices[k]]->view;
 		imageInfoBuffer[imageInfoBufferIndex].sampler = nullptr;
 		imageInfoBufferIndex++;
 	}
@@ -156,8 +167,11 @@ VkDescriptorSetLayoutBinding Interface::Pipeline::DescriptorSet::CombinedImageSa
 VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::CombinedImageSamplersDescriptor::DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const {
 	const int startIndex = imageInfoBufferIndex;
 	for(int k=0; k<textureImageIndices.size(); k++){
+		if(!descriptorSet.pipeline.vulkan.textureImages[textureImageIndices[k]])
+			throw std::runtime_error("Cannot get texture image descriptor write as not all it's images have been created.");
+		
 		imageInfoBuffer[imageInfoBufferIndex].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		imageInfoBuffer[imageInfoBufferIndex].imageView = descriptorSet.pipeline.vulkan.textureImages[textureImageIndices[k]].view;
+		imageInfoBuffer[imageInfoBufferIndex].imageView = descriptorSet.pipeline.vulkan.textureImages[textureImageIndices[k]]->view;
 		imageInfoBuffer[imageInfoBufferIndex].sampler = descriptorSet.pipeline.vulkan.textureSamplers[samplerIndices[k]];
 		imageInfoBufferIndex++;
 	}
@@ -190,8 +204,11 @@ VkDescriptorSetLayoutBinding Interface::Pipeline::DescriptorSet::StorageImagesDe
 VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::StorageImagesDescriptor::DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const {
 	const int startIndex = imageInfoBufferIndex;
 	for(int k=0; k<indices.size(); k++){
+		if(!descriptorSet.pipeline.vulkan.textureImages[indices[k]])
+			throw std::runtime_error("Cannot get storage image descriptor write as not all it's images have been created.");
+		
 		imageInfoBuffer[imageInfoBufferIndex].imageLayout = VK_IMAGE_LAYOUT_GENERAL; // or VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR?; https://registry.khronos.org/vulkan/site/spec/latest/chapters/descriptorsets.html
-		imageInfoBuffer[imageInfoBufferIndex].imageView = descriptorSet.pipeline.vulkan.textureImages[indices[k]].view;
+		imageInfoBuffer[imageInfoBufferIndex].imageView = descriptorSet.pipeline.vulkan.textureImages[indices[k]]->view;
 		imageInfoBuffer[imageInfoBufferIndex].sampler = nullptr;
 		imageInfoBufferIndex++;
 	}
