@@ -21,7 +21,7 @@ VkDescriptorSetLayoutBinding Interface::Pipeline::DescriptorSet::UBODescriptor::
 }
 VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::UBODescriptor::DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const {
 	if(!descriptorSet.pipeline.vulkan.uniformBufferObjects[index])
-		throw std::runtime_error("Cannot get UBO descriptor write as it hasn't been created.");
+		throw std::runtime_error("Cannot update UBO descriptor as it hasn't been created.");
 	UniformBufferObject &ref = descriptorSet.pipeline.vulkan.uniformBufferObjects[index].value();
 	
 	bufferInfoBuffer[bufferInfoBufferIndex].buffer = ref.buffersFlying[flight];
@@ -60,7 +60,7 @@ VkDescriptorSetLayoutBinding Interface::Pipeline::DescriptorSet::SBODescriptor::
 }
 VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::SBODescriptor::DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const {
 	if(!descriptorSet.pipeline.vulkan.storageBufferObjects[index])
-		throw std::runtime_error("Cannot get SBO descriptor write as it hasn't been created.");
+		throw std::runtime_error("Cannot update SBO descriptor as it hasn't been created.");
 	StorageBufferObject &ref = descriptorSet.pipeline.vulkan.storageBufferObjects[index].value();
 	
 	bufferInfoBuffer[bufferInfoBufferIndex].buffer = ref.buffersFlying[PositiveModulo(flight + flightOffset, MAX_FRAMES_IN_FLIGHT)];
@@ -97,7 +97,7 @@ VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::TextureImagesDescriptor
 	const int startIndex = imageInfoBufferIndex;
 	for(int k=0; k<indices.size(); k++){
 		if(!descriptorSet.pipeline.vulkan.textureImages[indices[k]])
-			throw std::runtime_error("Cannot get texture image descriptor write as not all it's images have been created.");
+			throw std::runtime_error("Cannot update texture image descriptor as not all its images have been created.");
 		
 		imageInfoBuffer[imageInfoBufferIndex].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		imageInfoBuffer[imageInfoBufferIndex].imageView = descriptorSet.pipeline.vulkan.textureImages[indices[k]]->view;
@@ -168,7 +168,7 @@ VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::CombinedImageSamplersDe
 	const int startIndex = imageInfoBufferIndex;
 	for(int k=0; k<textureImageIndices.size(); k++){
 		if(!descriptorSet.pipeline.vulkan.textureImages[textureImageIndices[k]])
-			throw std::runtime_error("Cannot get texture image descriptor write as not all it's images have been created.");
+			throw std::runtime_error("Cannot update texture image descriptor as not all its images have been created.");
 		
 		imageInfoBuffer[imageInfoBufferIndex].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		imageInfoBuffer[imageInfoBufferIndex].imageView = descriptorSet.pipeline.vulkan.textureImages[textureImageIndices[k]]->view;
@@ -205,7 +205,7 @@ VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::StorageImagesDescriptor
 	const int startIndex = imageInfoBufferIndex;
 	for(int k=0; k<indices.size(); k++){
 		if(!descriptorSet.pipeline.vulkan.textureImages[indices[k]])
-			throw std::runtime_error("Cannot get storage image descriptor write as not all it's images have been created.");
+			throw std::runtime_error("Cannot update storage image descriptor as not all its images have been created.");
 		
 		imageInfoBuffer[imageInfoBufferIndex].imageLayout = VK_IMAGE_LAYOUT_GENERAL; // or VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR?; https://registry.khronos.org/vulkan/site/spec/latest/chapters/descriptorsets.html
 		imageInfoBuffer[imageInfoBufferIndex].imageView = descriptorSet.pipeline.vulkan.textureImages[indices[k]]->view;

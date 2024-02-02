@@ -92,14 +92,10 @@ Interface::Pipeline::Pipeline(Interface &_vulkan, const PipelineBlueprint &bluep
 		if(vkAllocateDescriptorSets(vulkan.devices.logicalDevice, &allocInfo, descriptorSetsFlying.data()) != VK_SUCCESS)
 			throw std::runtime_error("failed to allocate descriptor sets!");
 	}
-	
-	// -----
-	// Initialising descriptor set configurations
-	// -----
-	UpdateDescriptorSets();
+
 }
-void Interface::Pipeline::UpdateDescriptorSets(){
-	for(std::shared_ptr<DescriptorSet> descriptorSet : descriptorSets) descriptorSet->InitConfigurations();
+void Interface::Pipeline::UpdateDescriptorSets(uint32_t first){
+	for(uint32_t i=first; i<descriptorSets.size(); ++i) descriptorSets[i]->Update();
 }
 Interface::GraphicsPipeline::GraphicsPipeline(Interface &_vulkan, const GraphicsPipelineBlueprint &blueprint) : Pipeline(_vulkan, blueprint.pipelineBlueprint){
 	

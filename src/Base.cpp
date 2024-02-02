@@ -399,28 +399,44 @@ void Interface::BuildBufferedRenderPass(int index, const BufferedRenderPassBluep
 	}
 	ref = BufferedRenderPass();
 	
-	bool resising;
 	if(!blueprint.width || !blueprint.height){
-		resising = true;
+		ref->resising = true;
 		ref->width = swapChainExtent.width;
 		ref->height = swapChainExtent.height;
 	} else {
-		resising = false;
+		ref->resising = false;
 		ref->width = blueprint.width;
 		ref->height = blueprint.height;
 	}
 	
 	if(vkCreateRenderPass(devices.logicalDevice, &blueprint.renderPassCI, nullptr, &ref->renderPass) != VK_SUCCESS) throw std::runtime_error("failed to create render pass!");
 	
+	ref->targetTextureImageIndices = blueprint.targetTextureImageIndices;
+}
+
+void Interface::UpdateBufferedRenderPass(int index){
+	std::optional<BufferedRenderPass> &ref = bufferedRenderPasses[index];
+	if(!ref){
+		throw std::runtime_error("Can't update buffered render pass as it hasn't been built.\n");
+		return;
+	}
+	
+	for(int imageIndex : ref->targetTextureImageIndices){
+		if(!textureImages[imageIndex]){
+			throw std::runtime_error("Can't update buffered render pass as not all its images have been built.\n");
+			return;
+		}
+	}
+	
 	VkFramebufferCreateInfo frameBufferCI = {};
 	frameBufferCI.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 	frameBufferCI.renderPass = ref->renderPass;
-	frameBufferCI.attachmentCount = uint32_t(blueprint.targetTextureImageIndices.size());
-	VkImageView attachments[blueprint.targetTextureImageIndices.size()];
-	for(int i=0; i<blueprint.targetTextureImageIndices.size(); i++){
-		if(!textureImages[blueprint.targetTextureImageIndices[i]])
+	frameBufferCI.attachmentCount = uint32_t(ref->targetTextureImageIndices.size());
+	VkImageView attachments[ref->targetTextureImageIndices.size()];
+	for(int i=0; i<ref->targetTextureImageIndices.size(); i++){
+		if(!textureImages[ref->targetTextureImageIndices[i]])
 			throw std::runtime_error("Buffered render pass target texture doesn't exist");
-		attachments[i] = textureImages[blueprint.targetTextureImageIndices[i]]->view;
+		attachments[i] = textureImages[ref->targetTextureImageIndices[i]]->view;
 	}
 	frameBufferCI.pAttachments = attachments;
 	frameBufferCI.width = ref->width;
@@ -429,23 +445,19 @@ void Interface::BuildBufferedRenderPass(int index, const BufferedRenderPassBluep
 	for(int i=0; i<MAX_FRAMES_IN_FLIGHT; i++) if(vkCreateFramebuffer(devices.logicalDevice, &frameBufferCI, nullptr, &ref->frameBuffersFlying[i]) != VK_SUCCESS)
 		throw std::runtime_error("failed to create framebuffer!");
 	
-	if(resising){
+	if(ref->resising){
 		bool foundBRP = false;
-		for(ResisingBRP &resisingBRP : resisingBRPs){
-			if(resisingBRP.index == index){
+		for(int &resisingBRP : resisingBRPs){
+			if(resisingBRP == index){
 				foundBRP = true;
-				resisingBRP.blueprint = blueprint;
 				break;
 			}
 		}
 		if(!foundBRP){
-			resisingBRPs.push_back({
-				.index = index,
-				.blueprint = blueprint
-			});
+			resisingBRPs.push_back(index);
 		}
 		
-		for(const int textureImageIndex : blueprint.targetTextureImageIndices){
+		for(const int textureImageIndex : ref->targetTextureImageIndices){
 			bool foundImage = false;
 			for(int resisingImage : resisingImages){
 				if(resisingImage == textureImageIndex){
@@ -469,20 +481,39 @@ void Interface::BuildLayeredBufferedRenderPass(int index, const LayeredBufferedR
 	ref->width = blueprint.width;
 	ref->height = blueprint.height;
 	
-	if(vkCreateRenderPass(devices.logicalDevice, &blueprint.renderPassCI, nullptr, &ref->renderPass) != VK_SUCCESS) throw std::runtime_error("failed to create render pass!");
+	if(vkCreateRenderPass(devices.logicalDevice, &blueprint.renderPassCI, nullptr, &ref->renderPass) != VK_SUCCESS)
+		throw std::runtime_error("failed to create render pass!");
 	
-	for(uint32_t i=0; i<blueprint.layersN; i++){
+	ref->layers.resize(blueprint.layersN);
+	ref->targetTextureImageIndex = blueprint.targetTextureImageIndex;
+	ref->imageFormat = blueprint.imageFormat;
+	ref->imageAspectFlags = blueprint.imageAspectFlags;
+}
+
+void Interface::UpdateLayeredBufferedRenderPass(int index){
+	std::optional<LayeredBufferedRenderPass> &ref = layeredBufferedRenderPasses[index];
+	if(!ref){
+		throw std::runtime_error("Can't update layered buffered render pass as it hasn't been built.\n");
+		return;
+	}
+	
+	if(!textureImages[ref->targetTextureImageIndex]){
+		throw std::runtime_error("Can't update layered buffered render pass as its image hasn't been built.\n");
+		return;
+	}
+	
+	for(uint32_t i=0; i<ref->layers.size(); i++){
 		// Image view for this cascade's layer (inside the depth map)
 		// This view is used to render to that specific depth image layer
 		VkImageViewCreateInfo imageViewCI = {
 			.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY,
-			.format = blueprint.imageFormat,
-			.subresourceRange.aspectMask = blueprint.imageAspectFlags,
+			.format = ref->imageFormat,
+			.subresourceRange.aspectMask = ref->imageAspectFlags,
 			.subresourceRange.baseMipLevel = 0,
 			.subresourceRange.levelCount = 1,
 			.subresourceRange.baseArrayLayer = i,
 			.subresourceRange.layerCount = 1,
-			.image = textureImages[blueprint.targetTextureImageIndex]->image
+			.image = textureImages[ref->targetTextureImageIndex]->image
 		};
 		if(vkCreateImageView(devices.logicalDevice, &imageViewCI, nullptr, &ref->layers[i].imageView) != VK_SUCCESS)
 			throw std::runtime_error("failed to create image view!");
@@ -492,8 +523,8 @@ void Interface::BuildLayeredBufferedRenderPass(int index, const LayeredBufferedR
 			.renderPass = ref->renderPass,
 			.attachmentCount = 1,
 			.pAttachments = &ref->layers[i].imageView,
-			.width = blueprint.width,
-			.height = blueprint.height,
+			.width = ref->width,
+			.height = ref->height,
 			.layers = 1
 		};
 		for(int j=0; j<MAX_FRAMES_IN_FLIGHT; j++) if(vkCreateFramebuffer(devices.logicalDevice, &frameBufferCI, nullptr, &ref->layers[i].frameBuffersFlying[j]) != VK_SUCCESS)
@@ -803,7 +834,7 @@ Interface::Interface(const InterfaceBlueprint &blueprint) : devices(blueprint.de
 	
 	textureImages = std::vector<std::optional<TextureImage>>(blueprint.imagesN, std::optional<TextureImage>());
 	
-	resisingBRPs = std::vector<ResisingBRP>();
+	resisingBRPs = std::vector<int>();
 	resisingImages = std::vector<int>();
 	
 	bufferedRenderPasses = std::vector<std::optional<BufferedRenderPass>>(blueprint.bufferedRenderPassesN, std::optional<BufferedRenderPass>());
@@ -841,10 +872,10 @@ Interface::Interface(const InterfaceBlueprint &blueprint) : devices(blueprint.de
 void Interface::RecreateResisingBRPsAndImages(){
 	if(resisingImages.empty() && resisingBRPs.empty()) return;
 	
-	for(ResisingBRP &resisingBRP : resisingBRPs){
+	for(int resisingBRP : resisingBRPs){
 		for(int j=0; j<MAX_FRAMES_IN_FLIGHT; j++){
-			if(bufferedRenderPasses[resisingBRP.index])
-				vkDestroyFramebuffer(devices.logicalDevice, bufferedRenderPasses[resisingBRP.index]->frameBuffersFlying[j], nullptr);
+			if(bufferedRenderPasses[resisingBRP])
+				vkDestroyFramebuffer(devices.logicalDevice, bufferedRenderPasses[resisingBRP]->frameBuffersFlying[j], nullptr);
 		}
 	}
 	for(int resisingImage : resisingImages){
@@ -855,7 +886,7 @@ void Interface::RecreateResisingBRPsAndImages(){
 		}
 	}
 	
-	for(int &resisingImage : resisingImages){
+	for(int resisingImage : resisingImages){
 		std::optional<TextureImage> &ref = textureImages[resisingImage];
 		if(!ref) continue;
 		
@@ -875,8 +906,8 @@ void Interface::RecreateResisingBRPsAndImages(){
 			.subresourceRange = {ref->blueprint.aspectFlags, 0, ref->blueprint.imageCI.mipLevels, 0, ref->blueprint.imageCI.arrayLayers}
 		});
 	}
-	for(ResisingBRP &resisingBRP : resisingBRPs){
-		std::optional<BufferedRenderPass> &ref = bufferedRenderPasses[resisingBRP.index];
+	for(int resisingBRP : resisingBRPs){
+		std::optional<BufferedRenderPass> &ref = bufferedRenderPasses[resisingBRP];
 		if(!ref) continue;
 		
 		ref->width = swapChainExtent.width;
@@ -885,12 +916,12 @@ void Interface::RecreateResisingBRPsAndImages(){
 		VkFramebufferCreateInfo frameBufferCI = {};
 		frameBufferCI.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 		frameBufferCI.renderPass = ref->renderPass;
-		frameBufferCI.attachmentCount = uint32_t(resisingBRP.blueprint.targetTextureImageIndices.size());
-		VkImageView attachments[resisingBRP.blueprint.targetTextureImageIndices.size()];
-		for(int j=0; j<resisingBRP.blueprint.targetTextureImageIndices.size(); j++){
-			if(!textureImages[resisingBRP.blueprint.targetTextureImageIndices[j]])
+		frameBufferCI.attachmentCount = uint32_t(bufferedRenderPasses[resisingBRP]->targetTextureImageIndices.size());
+		VkImageView attachments[bufferedRenderPasses[resisingBRP]->targetTextureImageIndices.size()];
+		for(int j=0; j<bufferedRenderPasses[resisingBRP]->targetTextureImageIndices.size(); j++){
+			if(!textureImages[bufferedRenderPasses[resisingBRP]->targetTextureImageIndices[j]])
 				throw std::runtime_error("Image index to resize doesn't exist");
-			attachments[j] = textureImages[resisingBRP.blueprint.targetTextureImageIndices[j]]->view;
+			attachments[j] = textureImages[bufferedRenderPasses[resisingBRP]->targetTextureImageIndices[j]]->view;
 		}
 		frameBufferCI.pAttachments = attachments;
 		frameBufferCI.width = ref->width;

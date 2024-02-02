@@ -54,7 +54,7 @@ void Interface::Pipeline::DescriptorSet::InitLayouts(){
 		throw std::runtime_error("failed to create descriptor set layout!");
 }
 
-void Interface::Pipeline::DescriptorSet::InitConfigurations(){
+void Interface::Pipeline::DescriptorSet::Update(){
 	VkDescriptorBufferInfo bufferInfos[32];
 	VkDescriptorImageInfo imageInfos[256];
 	int bufferInfoCounter, imageInfoCounter;

@@ -61,6 +61,8 @@
 		- Event type: `wxEVT_SIZE`
 		/\
 	- Fill required vertex and index buffers with `Vulkan::FillVertexBuffer` / `Vulkan::FillIndexBuffer`
+	- Build structuers like UBOs, textures and buffered render passes
+	- Build pipelines
  
  In the render loop:
 	- (Access render pipelines with `EVK::Interface::RP(...)`, and pipeline descriptor sets with `EVK::Interface::RenderPipeline::DS(...)`)
@@ -188,7 +190,9 @@ struct TextureImage {
 struct BufferedRenderPass {
 	uint32_t width, height;
 	VkRenderPass renderPass;
+	std::vector<int> targetTextureImageIndices;
 	VkFramebuffer frameBuffersFlying[MAX_FRAMES_IN_FLIGHT];
+	bool resising;
 	
 	void CleanUp(const VkDevice &logicalDevice){
 		vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
@@ -202,6 +206,9 @@ struct LayeredBufferedRenderPass {
 	
 	uint32_t width, height;
 	VkRenderPass renderPass;
+	int targetTextureImageIndex;
+	VkFormat imageFormat;
+	VkImageAspectFlags imageAspectFlags;
 	
 	struct Layer {
 		VkImageView imageView;
@@ -428,8 +435,10 @@ public:
 	void BuildUBO(int index, const UniformBufferObjectBlueprint &blueprint);
 	void BuildSBO(int index, const StorageBufferObjectBlueprint &blueprint);
 	void BuildTextureSampler(int index, const VkSamplerCreateInfo &samplerCI);
-	void BuildBufferedRenderPass(int index, const BufferedRenderPassBlueprint &blueprint); // returns if it resises with the window
+	void BuildBufferedRenderPass(int index, const BufferedRenderPassBlueprint &blueprint);
+	void UpdateBufferedRenderPass(int index);
 	void BuildLayeredBufferedRenderPass(int index, const LayeredBufferedRenderPassBlueprint &blueprint);
+	void UpdateLayeredBufferedRenderPass(int index);
 	
 	
 	// ---------------------
@@ -505,12 +514,7 @@ private:
 	std::vector<VkImageView> swapChainImageViews;
 	std::vector<VkFramebuffer> swapChainFramebuffers;
 	
-	struct ResisingBRP {
-		int index;
-		BufferedRenderPassBlueprint blueprint;
-	};
-	
-	std::vector<ResisingBRP> resisingBRPs;
+	std::vector<int> resisingBRPs;
 	std::vector<int> resisingImages;
 	
 	uint32_t imageCount;
@@ -573,7 +577,7 @@ private:
 		virtual void Bind() = 0;
 		// Set which descriptor sets are bound for subsequent render calls
 		virtual void BindDescriptorSets(int first, int number, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) = 0;
-		void UpdateDescriptorSets(); // have to do this every time any elements of any descriptors are changed, e.g. when an image view is re-created upon window resize
+		void UpdateDescriptorSets(uint32_t first=0); // have to do this every time any elements of any descriptors are changed, e.g. when an image view is re-created upon window resize
 		// Set push constant data
 		template <typename T> void CmdPushConstants(int index, T *data){
 			assert(pushConstantRanges[index].size == sizeof(T));
@@ -594,7 +598,7 @@ private:
 			
 			// For initialisation
 			void InitLayouts();
-			void InitConfigurations();
+			void Update();
 			
 			size_t GetDescriptorCount() const { return descriptors.size(); }
 			std::shared_ptr<Descriptor> GetDescriptor(int index) const { return descriptors[index]; }
