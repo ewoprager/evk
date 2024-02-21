@@ -36,7 +36,7 @@ target_link_libraries(${PROJECT_NAME}
                       ESDL
 					  SDL2_image
 					  vulkan
-                      mat4x4
+                      mattresses
 					  )
 
 include(CMakePrintHelpers)

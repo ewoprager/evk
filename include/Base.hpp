@@ -8,9 +8,11 @@
 #include <chrono>
 #include <thread>
 #include <functional>
+#include <set>
 
 #include <MoltenVK/mvk_vulkan.h>
 #include <vma/vk_mem_alloc.h>
+#include <mattresses.h>
 
 #include <SDL2/SDL_image.h>
 
@@ -166,6 +168,14 @@ struct DataImageBlueprint {
 	VkFormat format;
 	bool mip;
 };
+struct Data3DImageBlueprint {
+	uint8_t *data;
+	uint32_t width;
+	uint32_t height;
+	uint32_t depth;
+	uint32_t pitch;
+	VkFormat format;
+};
 struct CubemapPNGImageBlueprint {
 	std::array<std::string, 6> imageFilenames;
 };
@@ -188,11 +198,10 @@ struct TextureImage {
 	}
 };
 struct BufferedRenderPass {
-	uint32_t width, height;
 	VkRenderPass renderPass;
 	std::vector<int> targetTextureImageIndices;
 	VkFramebuffer frameBuffersFlying[MAX_FRAMES_IN_FLIGHT];
-	bool resising;
+	std::optional<vec<2, uint32_t>> size;
 	
 	void CleanUp(const VkDevice &logicalDevice){
 		vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
@@ -359,9 +368,7 @@ struct StorageBufferObjectBlueprint {
 struct BufferedRenderPassBlueprint {
 	VkRenderPassCreateInfo renderPassCI;
 	std::vector<int> targetTextureImageIndices;
-	
-	// if either with or height is 0, the buffer resizes with the window
-	uint32_t width, height;
+	bool resizeWithSwapChain;
 };
 struct LayeredBufferedRenderPassBlueprint {
 	VkRenderPassCreateInfo renderPassCI;
@@ -436,7 +443,7 @@ public:
 	void BuildSBO(int index, const StorageBufferObjectBlueprint &blueprint);
 	void BuildTextureSampler(int index, const VkSamplerCreateInfo &samplerCI);
 	void BuildBufferedRenderPass(int index, const BufferedRenderPassBlueprint &blueprint);
-	void UpdateBufferedRenderPass(int index);
+	void AllocateOrResizeBufferedRenderPass(int index, const vec<2, uint32_t> &size);
 	void BuildLayeredBufferedRenderPass(int index, const LayeredBufferedRenderPassBlueprint &blueprint);
 	void UpdateLayeredBufferedRenderPass(int index);
 	
@@ -483,6 +490,8 @@ public:
 	void BuildCubemapImageFromFiles(int index, const CubemapPNGImageBlueprint &blueprint);
 	void BuildTextureImage(int index, ManualImageBlueprint blueprint);
 	void BuildDataImage(int index, const DataImageBlueprint &blueprint);
+	void Build3DDataImage(int index, const Data3DImageBlueprint &blueprint);
+	void AllocateOrResizeImage(int index, const vec<3, uint32_t> &size);
 	
 	
 	// ----- Getters -----
@@ -514,8 +523,7 @@ private:
 	std::vector<VkImageView> swapChainImageViews;
 	std::vector<VkFramebuffer> swapChainFramebuffers;
 	
-	std::vector<int> resisingBRPs;
-	std::vector<int> resisingImages;
+	std::vector<int> swapChainSizeMatchedBRPs;
 	
 	uint32_t imageCount;
 	VkFormat swapChainImageFormat;
@@ -795,7 +803,7 @@ private:
 	void CreateDepthResources();
 	void CreateFramebuffers();
 	void CleanUpSwapChain();
-	void RecreateResisingBRPsAndImages();
+	void ResizeSwapChainSizeMatchingBRPs();
 	void RecreateSwapChain(){
 		VkExtent2D extent = devices.GetSurfaceExtent();
 		// in case we are minimised:
@@ -816,12 +824,12 @@ private:
 		CreateDepthResources();
 		CreateFramebuffers();
 		
-		RecreateResisingBRPsAndImages();
+		ResizeSwapChainSizeMatchingBRPs();
 	}
 	
 	void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer &buffer, VmaAllocation &allocation, VmaAllocationInfo *allocationInfoDst=nullptr);
 	void CopyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
-	void CopyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height);
+	void CopyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height, uint32_t depth=1);
 	
 	void SetImageLayout(VkCommandBuffer cmdbuffer, VkImage image, VkImageLayout oldImageLayout, VkImageLayout newImageLayout, VkImageSubresourceRange subresourceRange, VkPipelineStageFlags srcStageMask=VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VkPipelineStageFlags dstStageMask=VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
 };
