@@ -820,7 +820,11 @@ void Interface::AllocateOrResizeImage(int index, const vec<3, uint32_t> &size){
 			return;
 		}
 		ref->CleanUp(devices.logicalDevice, devices.allocator);
+	} else {
+		throw std::runtime_error("Cannot allocate / resize image " + std::to_string(index) + "as it hasn't been built yet.");
+		return;
 	}
+	
 	ref->blueprint.imageCI.extent.width = size.x;
 	ref->blueprint.imageCI.extent.height = size.y;
 	ref->blueprint.imageCI.extent.depth = size.z;
@@ -1342,24 +1346,25 @@ void Interface::BuildTextureImage(int index, ManualImageBlueprint blueprint){
 		ref->CleanUp(devices.logicalDevice, devices.allocator);
 	}
 	ref = TextureImage();
-	ref->blueprint = blueprint;
 	
-	if(blueprint.imageCI.extent.width == 0 || blueprint.imageCI.extent.height == 0){
+	if(blueprint.imageCI.extent.width == 0 || blueprint.imageCI.extent.height == 0 || blueprint.imageCI.extent.depth == 0){
 		blueprint.imageCI.extent.width = swapChainExtent.width;
 		blueprint.imageCI.extent.height = swapChainExtent.height;
+		blueprint.imageCI.extent.depth = 1;
 	}
+	ref->blueprint = blueprint;
 	
-	CreateImage(blueprint.imageCI, blueprint.properties, ref->image, ref->allocation);
+	CreateImage(ref->blueprint.imageCI, ref->blueprint.properties, ref->image, ref->allocation);
 	
 	ref->view = CreateImageView({
 		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
 		.pNext = nullptr,
 		.flags = 0,
 		.image = ref->image,
-		.viewType = blueprint.imageViewType,
-		.format = blueprint.imageCI.format,
+		.viewType = ref->blueprint.imageViewType,
+		.format = ref->blueprint.imageCI.format,
 		.components = {},
-		.subresourceRange = {blueprint.aspectFlags, 0, blueprint.imageCI.mipLevels, 0, blueprint.imageCI.arrayLayers}
+		.subresourceRange = {ref->blueprint.aspectFlags, 0, ref->blueprint.imageCI.mipLevels, 0, ref->blueprint.imageCI.arrayLayers}
 	});
 }
 void Interface::BuildTextureImageFromFile(int index, const PNGImageBlueprint &blueprint){
