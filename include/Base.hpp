@@ -9,6 +9,7 @@
 #include <thread>
 #include <functional>
 #include <set>
+#include <optional>
 
 #include <MoltenVK/mvk_vulkan.h>
 #include <vma/vk_mem_alloc.h>
@@ -584,7 +585,7 @@ private:
 		// Bind the pipeline for subsequent render calls
 		virtual void Bind() = 0;
 		// Set which descriptor sets are bound for subsequent render calls
-		virtual void BindDescriptorSets(int first, int number, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) = 0;
+		virtual void BindDescriptorSets(int first=0, int number=0, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) = 0;
 		void UpdateDescriptorSets(uint32_t first=0); // have to do this every time any elements of any descriptors are changed, e.g. when an image view is re-created upon window resize
 		// Set push constant data
 		template <typename T> void CmdPushConstants(int index, T *data){
@@ -754,7 +755,7 @@ private:
 		}
 		
 		void Bind() override;
-		void BindDescriptorSets(int first, int number, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) override;
+		void BindDescriptorSets(int first=0, int number=0, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) override;
 		
 	private:
 		VkShaderModule vertShaderModule;
@@ -770,7 +771,7 @@ private:
 		}
 		
 		void Bind() override;
-		void BindDescriptorSets(int first, int number, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) override;
+		void BindDescriptorSets(int first=0, int number=0, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) override;
 		
 	private:
 		VkShaderModule shaderModule;

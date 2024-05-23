@@ -45,8 +45,18 @@ void Interface::Pipeline::DescriptorSet::InitLayouts(){
 	VkDescriptorSetLayoutBinding layoutBindings[descriptors.size()];
 	for(int i=0; i<descriptors.size(); i++) layoutBindings[i] = descriptors[i]->LayoutBinding();
 	
-	VkDescriptorSetLayoutCreateInfo layoutInfo{
+	// binding flags
+	std::vector<VkDescriptorBindingFlags> flags(descriptors.size());
+	std::ranges::fill(flags, VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT);
+	const VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlags{
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+		.pNext = nullptr,
+		.pBindingFlags = flags.data(),
+		.bindingCount = uint32_t(descriptors.size())
+	};
+	const VkDescriptorSetLayoutCreateInfo layoutInfo{
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+		.pNext = &bindingFlags,
 		.bindingCount = uint32_t(descriptors.size()),
 		.pBindings = layoutBindings
 	};

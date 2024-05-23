@@ -6,6 +6,8 @@
 
 #include <Base.hpp>
 
+#include <StaticTest.hpp>
+
 namespace EVK {
 
 VkCommandBuffer Interface::BeginSingleTimeCommands(){

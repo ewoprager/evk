@@ -1,55 +1,39 @@
-#include <Base.hpp>
+#include <StaticTest.hpp>
 
-namespace EVK {
+namespace Static {
 
-template <typename T> T PositiveModulo(const T &lhs, const T &rhs){
-	return ((lhs % rhs) + rhs) % rhs;
-}
-
-VkDescriptorSetLayoutBinding Interface::Pipeline::DescriptorSet::UBODescriptor::LayoutBinding() const {
-	if(!descriptorSet.pipeline.vulkan.uniformBufferObjects[index])
-		throw std::runtime_error("Cannot get UBO layout binding as it hasn't been created.");
-	UniformBufferObject &ref = descriptorSet.pipeline.vulkan.uniformBufferObjects[index].value();
-	
+VkDescriptorSetLayoutBinding UBODescriptor::LayoutBinding() const {
 	return (VkDescriptorSetLayoutBinding){
 		.binding = binding,
-		.descriptorType = ref.dynamic ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		.descriptorType = dynamic ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 		.descriptorCount = 1,
 		.stageFlags = stageFlags,
 		.pImmutableSamplers = nullptr
 	};
 }
-VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::UBODescriptor::DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const {
-	if(!descriptorSet.pipeline.vulkan.uniformBufferObjects[index])
-		throw std::runtime_error("Cannot update UBO descriptor as it hasn't been created.");
-	UniformBufferObject &ref = descriptorSet.pipeline.vulkan.uniformBufferObjects[index].value();
-	
-	bufferInfoBuffer[bufferInfoBufferIndex].buffer = ref.buffersFlying[flight];
+VkWriteDescriptorSet UBODescriptor::DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const {
+	bufferInfoBuffer[bufferInfoBufferIndex].buffer = buffersFlying[flight];
 	bufferInfoBuffer[bufferInfoBufferIndex].offset = 0;
-	bufferInfoBuffer[bufferInfoBufferIndex].range = ref.dynamic ? ref.dynamic->alignment : ref.size;
+	bufferInfoBuffer[bufferInfoBufferIndex].range = dynamic ? dynamic->alignment : size;
 	
 	return (VkWriteDescriptorSet){
 		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
 		.dstSet = dstSet,
 		.dstBinding = binding,
 		.dstArrayElement = 0,
-		.descriptorType = ref.dynamic ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		.descriptorType = dynamic ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 		.descriptorCount = 1,
 		.pBufferInfo = &bufferInfoBuffer[bufferInfoBufferIndex++]
 	};
 }
-VkDescriptorPoolSize Interface::Pipeline::DescriptorSet::UBODescriptor::PoolSize() const {
-	if(!descriptorSet.pipeline.vulkan.uniformBufferObjects[index])
-		throw std::runtime_error("Cannot get UBO pool size as it hasn't been created.");
-	UniformBufferObject &ref = descriptorSet.pipeline.vulkan.uniformBufferObjects[index].value();
-	
+VkDescriptorPoolSize UBODescriptor::PoolSize() const {
 	return (VkDescriptorPoolSize){
-		.type = ref.dynamic ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		.type = dynamic ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 		.descriptorCount = 1
 	};
 }
 
-VkDescriptorSetLayoutBinding Interface::Pipeline::DescriptorSet::SBODescriptor::LayoutBinding() const {
+VkDescriptorSetLayoutBinding SBODescriptor::LayoutBinding() const {
 	return (VkDescriptorSetLayoutBinding){
 		.binding = binding,
 		.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -58,10 +42,7 @@ VkDescriptorSetLayoutBinding Interface::Pipeline::DescriptorSet::SBODescriptor::
 		.pImmutableSamplers = nullptr
 	};
 }
-VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::SBODescriptor::DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const {
-	if(!descriptorSet.pipeline.vulkan.storageBufferObjects[index])
-		throw std::runtime_error("Cannot update SBO descriptor as it hasn't been created.");
-	StorageBufferObject &ref = descriptorSet.pipeline.vulkan.storageBufferObjects[index].value();
+VkWriteDescriptorSet SBODescriptor::DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const {
 	
 	bufferInfoBuffer[bufferInfoBufferIndex].buffer = ref.buffersFlying[PositiveModulo(flight + flightOffset, MAX_FRAMES_IN_FLIGHT)];
 	bufferInfoBuffer[bufferInfoBufferIndex].offset = 0;
@@ -77,14 +58,14 @@ VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::SBODescriptor::Descript
 		.pBufferInfo = &bufferInfoBuffer[bufferInfoBufferIndex++]
 	};
 }
-VkDescriptorPoolSize Interface::Pipeline::DescriptorSet::SBODescriptor::PoolSize() const {
+VkDescriptorPoolSize SBODescriptor::PoolSize() const {
 	return (VkDescriptorPoolSize){
 		.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 		.descriptorCount = 1
 	};
 }
 
-VkDescriptorSetLayoutBinding Interface::Pipeline::DescriptorSet::TextureImagesDescriptor::LayoutBinding() const {
+VkDescriptorSetLayoutBinding TextureImagesDescriptor::LayoutBinding() const {
 	return (VkDescriptorSetLayoutBinding){
 		.binding = binding,
 		.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
@@ -93,7 +74,7 @@ VkDescriptorSetLayoutBinding Interface::Pipeline::DescriptorSet::TextureImagesDe
 		.pImmutableSamplers = nullptr
 	};
 }
-VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::TextureImagesDescriptor::DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const {
+VkWriteDescriptorSet TextureImagesDescriptor::DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const {
 	const int startIndex = imageInfoBufferIndex;
 	uint32_t n = indices.size();
 	for(int k=0; k<indices.size(); k++){
@@ -117,14 +98,14 @@ VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::TextureImagesDescriptor
 		.pImageInfo = &imageInfoBuffer[startIndex]
 	};
 }
-VkDescriptorPoolSize Interface::Pipeline::DescriptorSet::TextureImagesDescriptor::PoolSize() const {
+VkDescriptorPoolSize TextureImagesDescriptor::PoolSize() const {
 	return (VkDescriptorPoolSize){
 		.type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
 		.descriptorCount = uint32_t(indices.size())
 	};
 }
 
-VkDescriptorSetLayoutBinding Interface::Pipeline::DescriptorSet::TextureSamplersDescriptor::LayoutBinding() const {
+VkDescriptorSetLayoutBinding TextureSamplersDescriptor::LayoutBinding() const {
 	return (VkDescriptorSetLayoutBinding){
 		.binding = binding,
 		.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
@@ -133,7 +114,7 @@ VkDescriptorSetLayoutBinding Interface::Pipeline::DescriptorSet::TextureSamplers
 		.pImmutableSamplers = nullptr
 	};
 }
-VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::TextureSamplersDescriptor::DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const {
+VkWriteDescriptorSet TextureSamplersDescriptor::DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const {
 	const int startIndex = imageInfoBufferIndex;
 	for(int k=0; k<indices.size(); k++){
 		imageInfoBuffer[imageInfoBufferIndex].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -151,14 +132,14 @@ VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::TextureSamplersDescript
 		.pImageInfo = &imageInfoBuffer[startIndex]
 	};
 }
-VkDescriptorPoolSize Interface::Pipeline::DescriptorSet::TextureSamplersDescriptor::PoolSize() const {
+VkDescriptorPoolSize TextureSamplersDescriptor::PoolSize() const {
 	return (VkDescriptorPoolSize){
 		.type = VK_DESCRIPTOR_TYPE_SAMPLER,
 		.descriptorCount = uint32_t(indices.size())
 	};
 }
 
-VkDescriptorSetLayoutBinding Interface::Pipeline::DescriptorSet::CombinedImageSamplersDescriptor::LayoutBinding() const {
+VkDescriptorSetLayoutBinding CombinedImageSamplersDescriptor::LayoutBinding() const {
 	return (VkDescriptorSetLayoutBinding){
 		.binding = binding,
 		.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -167,7 +148,7 @@ VkDescriptorSetLayoutBinding Interface::Pipeline::DescriptorSet::CombinedImageSa
 		.pImmutableSamplers = nullptr
 	};
 }
-VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::CombinedImageSamplersDescriptor::DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const {
+VkWriteDescriptorSet CombinedImageSamplersDescriptor::DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const {
 	const int startIndex = imageInfoBufferIndex;
 	uint32_t n = textureImageIndices.size();
 	for(int k=0; k<textureImageIndices.size(); k++){
@@ -192,14 +173,14 @@ VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::CombinedImageSamplersDe
 		.pImageInfo = &imageInfoBuffer[startIndex]
 	};
 }
-VkDescriptorPoolSize Interface::Pipeline::DescriptorSet::CombinedImageSamplersDescriptor::PoolSize() const {
+VkDescriptorPoolSize CombinedImageSamplersDescriptor::PoolSize() const {
 	return (VkDescriptorPoolSize){
 		.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 		.descriptorCount = uint32_t(textureImageIndices.size())
 	};
 }
 
-VkDescriptorSetLayoutBinding Interface::Pipeline::DescriptorSet::StorageImagesDescriptor::LayoutBinding() const {
+VkDescriptorSetLayoutBinding StorageImagesDescriptor::LayoutBinding() const {
 	return (VkDescriptorSetLayoutBinding){
 		.binding = binding,
 		.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
@@ -208,7 +189,7 @@ VkDescriptorSetLayoutBinding Interface::Pipeline::DescriptorSet::StorageImagesDe
 		.pImmutableSamplers = nullptr
 	};
 }
-VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::StorageImagesDescriptor::DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const {
+VkWriteDescriptorSet StorageImagesDescriptor::DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const {
 	const int startIndex = imageInfoBufferIndex;
 	uint32_t n = indices.size();
 	for(int k=0; k<indices.size(); k++){
@@ -234,11 +215,12 @@ VkWriteDescriptorSet Interface::Pipeline::DescriptorSet::StorageImagesDescriptor
 		.pImageInfo = &imageInfoBuffer[startIndex]
 	};
 }
-VkDescriptorPoolSize Interface::Pipeline::DescriptorSet::StorageImagesDescriptor::PoolSize() const {
+VkDescriptorPoolSize StorageImagesDescriptor::PoolSize() const {
 	return (VkDescriptorPoolSize){
 		.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
 		.descriptorCount = uint32_t(indices.size())
 	};
 }
 
-} // namespace::EVK
+
+} // namespace Static

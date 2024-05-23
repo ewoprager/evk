@@ -9,6 +9,9 @@ void Interface::ComputePipeline::Bind(){
 	vkCmdBindPipeline(vulkan.computeCommandBuffersFlying[vulkan.currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
 }
 void Interface::GraphicsPipeline::BindDescriptorSets(int first, int number, const std::vector<int> &dynamicOffsetNumbers){
+	if(number < 1){
+		number = int(descriptorSets.size()) - first;
+	}
 	if(!dynamicOffsetNumbers.empty()){
 		std::vector<uint32_t> theseDynamicOffsets {};
 		int indexOfDynamic = 0;
@@ -22,6 +25,9 @@ void Interface::GraphicsPipeline::BindDescriptorSets(int first, int number, cons
 	}
 }
 void Interface::ComputePipeline::BindDescriptorSets(int first, int number, const std::vector<int> &dynamicOffsetNumbers){
+	if(number < 1){
+		number = int(descriptorSets.size()) - first;
+	}
 	if(!dynamicOffsetNumbers.empty()){
 		std::vector<uint32_t> theseDynamicOffsets {};
 		int indexOfDynamic = 0;
@@ -62,6 +68,7 @@ Interface::Pipeline::Pipeline(Interface &_vulkan, const PipelineBlueprint &bluep
 	
 	VkDescriptorPoolCreateInfo poolInfo{
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+		.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
 		.poolSizeCount = descriptorSetLayoutBindingNumber,
 		.pPoolSizes = poolSizes.data(),
 		.maxSets = (uint32_t)(MAX_FRAMES_IN_FLIGHT * blueprint.descriptorSetBlueprints.size())
