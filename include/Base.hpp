@@ -17,6 +17,8 @@
 
 #include <SDL2/SDL_image.h>
 
+#include <Static.hpp>
+
 #define MAX_FRAMES_IN_FLIGHT 2
 
 #define VULKAN_VERSION_USING VK_API_VERSION_1_2
@@ -135,12 +137,6 @@ struct UniformBufferObject {
 	VmaAllocation allocationsFlying[MAX_FRAMES_IN_FLIGHT];
 	VmaAllocationInfo allocationInfosFlying[MAX_FRAMES_IN_FLIGHT];
 	VkDeviceSize size;
-	
-	struct Dynamic {
-		int repeatsN;
-		VkDeviceSize alignment;
-	};
-	std::optional<Dynamic> dynamic;
 	
 	void CleanUp(const VmaAllocator &allocator){
 		for(int i=0; i<MAX_FRAMES_IN_FLIGHT; i++) vmaDestroyBuffer(allocator, buffersFlying[i], allocationsFlying[i]);
@@ -396,10 +392,405 @@ struct InterfaceBlueprint {
 	int vertexBuffersN;
 	int indexBuffersN;
 };
+
+
+
+
+
+// ----------------------------
+// ----- New static stuff -----
+// ----------------------------
+
+// Push constants
+// -----
+struct NoPushConstants {};
+template <VkShaderStageFlags stageFlags, size_t offset, typename T> struct PushConstants {
+	static constexpr VkShaderStageFlags stageFlagsValue = stageFlags;
+	static constexpr uint32_t offsetValue = offset;
+	using type = T;
+};
+
+
+// Descriptor
+// -----
+template <uint32_t binding, VkShaderStageFlags stageFlags> struct DescriptorBase {
+	static constexpr uint32_t bindingValue = binding;
+	static constexpr VkShaderStageFlags stageFlagsValue = stageFlags;
+	
+	virtual VkDescriptorSetLayoutBinding LayoutBinding() const = 0;
+	
+	virtual VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const = 0;
+	
+	virtual VkDescriptorPoolSize PoolSize() const = 0;
+};
+
+template <uint32_t binding, VkShaderStageFlags stageFlags>
+class UBODescriptor : public DescriptorBase<binding, stageFlags> {
+public:
+	UBODescriptor(int _index) : index(_index) {}
+	
+	VkDescriptorSetLayoutBinding LayoutBinding() const override;
+	
+	VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
+	
+	VkDescriptorPoolSize PoolSize() const override;
+	
+private:
+	int index;
+};
+
+template <uint32_t binding, VkShaderStageFlags stageFlags>
+class SBODescriptor : public DescriptorBase<binding, stageFlags> {
+public:
+	SBODescriptor(int _index, int _flightOffset) : index(_index), flightOffset(_flightOffset) {}
+	
+	VkDescriptorSetLayoutBinding LayoutBinding() const override;
+	
+	VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
+	
+	VkDescriptorPoolSize PoolSize() const override;
+	
+private:
+	int index;
+	int flightOffset;
+};
+
+template <uint32_t binding, VkShaderStageFlags stageFlags>
+class TextureImagesDescriptor : public DescriptorBase<binding, stageFlags> {
+public:
+	TextureImagesDescriptor(const std::vector<int> &_indices) : indices(_indices) {}
+	
+	VkDescriptorSetLayoutBinding LayoutBinding() const override;
+	
+	VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
+	
+	VkDescriptorPoolSize PoolSize() const override;
+	
+private:
+	std::vector<int> indices;
+};
+
+template <uint32_t binding, VkShaderStageFlags stageFlags>
+class TextureSamplersDescriptor : public DescriptorBase<binding, stageFlags> {
+public:
+	TextureSamplersDescriptor(const std::vector<int> &_indices) : indices(_indices) {}
+	
+	VkDescriptorSetLayoutBinding LayoutBinding() const override;
+	
+	VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
+	
+	VkDescriptorPoolSize PoolSize() const override;
+	
+private:
+	std::vector<int> indices;
+};
+
+template <uint32_t binding, VkShaderStageFlags stageFlags>
+class CombinedImageSamplersDescriptor : public DescriptorBase<binding, stageFlags> {
+public:
+	CombinedImageSamplersDescriptor(const std::vector<int> &_textureImageIndices, const std::vector<int> &_samplerIndices) : textureImageIndices(_textureImageIndices), samplerIndices(_samplerIndices) {
+		assert(_textureImageIndices.size() == _samplerIndices.size());
+	}
+	
+	VkDescriptorSetLayoutBinding LayoutBinding() const override;
+	
+	VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
+	
+	VkDescriptorPoolSize PoolSize() const override;
+	
+private:
+	std::vector<int> textureImageIndices;
+	std::vector<int> samplerIndices;
+};
+
+template <uint32_t binding, VkShaderStageFlags stageFlags>
+class StorageImagesDescriptor : public DescriptorBase<binding, stageFlags> {
+public:
+	StorageImagesDescriptor(const std::vector<int> &_indices) : indices(_indices) {}
+	
+	VkDescriptorSetLayoutBinding LayoutBinding() const override;
+	
+	VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
+	
+	VkDescriptorPoolSize PoolSize() const override;
+	
+private:
+	std::vector<int> indices;
+};
+
+
+// Uniform
+// -----
+template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags> struct UniformBase {
+	static constexpr uint32_t setValue = set;
+	static constexpr uint32_t bindingValue = binding;
+	
+	using descriptorType = DescriptorBase<binding, stageFlags>;
+};
+
+template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags, typename T>
+struct UBO : public UniformBase<set, binding, stageFlags> {
+	using descriptorType = UBODescriptor<binding, stageFlags>;
+};
+template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags, typename T>
+struct SBO : public UniformBase<set, binding, stageFlags> {
+	using descriptorType = SBODescriptor<binding, stageFlags>;
+};
+template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags>
+struct TextureImages : public UniformBase<set, binding, stageFlags> {
+	using descriptorType = TextureImagesDescriptor<binding, stageFlags>;
+};
+template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags>
+struct TextureSamplers : public UniformBase<set, binding, stageFlags> {
+	using descriptorType = TextureSamplersDescriptor<binding, stageFlags>;
+};
+template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags>
+struct CombinedImageSamplers : public UniformBase<set, binding, stageFlags> {
+	using descriptorType = CombinedImageSamplersDescriptor<binding, stageFlags>;
+};
+template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags>
+struct StorageImages : public UniformBase<set, binding, stageFlags> {
+	using descriptorType = StorageImagesDescriptor<binding, stageFlags>;
+};
+
+template <typename uniformT, typename... uniformTs> consteval bool UniformContains(){
+	return ((uniformT::UniformBase::setValue == uniformTs::UniformBase::setValue && uniformT::UniformBase::bindingValue == uniformTs::UniformBase::bindingValue) || ...);
+}
+template <typename uniformT> consteval bool UniformUnique(){ return true; }
+template <typename uniformT1, typename uniformT2, typename... uniformTs> consteval bool UniformUnique(){
+	return !UniformContains<uniformT1, uniformT2, uniformTs...>() && UniformUnique<uniformT2, uniformTs...>();
+}
+
+template <unsigned set, typename uniformT>
+using FilteredDescriptorPackOne = std::conditional_t<uniformT::setValue == set, TypePack<typename uniformT::descriptorType>, TypePack<>>;
+
+template <unsigned set, typename... uniformTs>
+using FilteredDescriptorPack = ConcatenatedPack_t<FilteredDescriptorPackOne<set, uniformTs>...>;
+
+template <uint32_t set, typename... uniformTs> static consteval
+bool DescriptorSetExistsInUniforms(){ return !FilteredDescriptorPack<set, uniformTs...>::empty; }
+
+template <uint32_t set, typename... uniformTs> static consteval
+uint32_t DescriptorSetCountImpl(){
+	if constexpr (DescriptorSetExistsInUniforms<set, uniformTs...>())
+		return DescriptorSetCountImpl<set + 1, uniformTs...>();
+	else
+		return set;
+}
+
+template <typename... uniformTs> static constexpr
+uint32_t DescriptorSetCount(){ return DescriptorSetCountImpl<0, uniformTs...>(); }
+
+template <uint32_t set, typename... uniformTs> static consteval
+bool AllSmallerSetsExistInUniforms(){
+	if constexpr (set == 0)
+		return DescriptorSetExistsInUniforms<0, uniformTs...>();
+	else
+		return DescriptorSetExistsInUniforms<set, uniformTs..>() && AllSmallerSetsExistInUniforms<set - 1, uniformTs..>();
+}
+
+
+// Attributes
+// -----
+template <VkVertexInputBindingDescription... bindingDescriptions> struct BindingDescriptionPack {};
+template <VkVertexInputAttributeDescription... attributeDescriptions> struct AttributeDescriptionPack {};
+template <typename attributeTP, typename bindingDescriptionP, typename attributeDescriptionP> struct Attributes {};
+template <typename... attributeTs, VkVertexInputBindingDescription... bindingDescriptions, VkVertexInputAttributeDescription... attributeDescriptions>
+struct Attributes<TypePack<attributeTs...>, BindingDescriptionPack<bindingDescriptions...>, AttributeDescriptionPack<attributeDescriptions...>> {
+	
+	static consteval uint32_t TotalSize(){ return (sizeof(attributeTs) + ...); }
+	
+	static_assert((bindingDescriptions.stride + ...) == TotalSize(), "Vertex input binding description strides should sum to the total size of all the attributes.");
+	
+	static_assert(Unique<bindingDescriptions.binding...>(), "Vertex input binding description bindings should be unique.");
+	
+	static_assert(Unique<attributeDescriptions.location...>(), "Vertex input attribute description locations should be unique.");
+	
+	template <typename T> void BindVertexBuffer(){
+		// check binding
+		// ...
+	}
+};
+
+
+// Descriptor set
+// -----
+template <typename descriptorTP> struct DescriptorSet {};
+template <typename... descriptorTs>
+struct DescriptorSet<TypePack<descriptorTs...>> {
+	static constexpr uint32_t descriptorCount = CountT<descriptorTs...>();
+	
+	template <uint32_t index> using iDescriptor = IndexT<index, descriptorTs...>;
+	
+	DescriptorSet(Pipeline &_pipeline, int _index, const DescriptorSetBlueprint &blueprint);
+	~DescriptorSet(){}
+	
+	// For initialisation
+	void InitLayouts();
+	void Update();
+	
+	size_t GetDescriptorCount() const { return descriptors.size(); }
+	std::shared_ptr<Descriptor> GetDescriptor(int index) const { return descriptors[index]; }
+	bool GetUBODynamic() const { return uboDynamicAlignment.has_value(); }
+	const std::optional<VkDeviceSize> &GetUBODynamicAlignment() const { return uboDynamicAlignment; }
+	
+private:
+	Pipeline &pipeline;
+	int index;
+	
+	std::tuple<descriptorTs...> descriptors;
+	
+	// ubo info
+	std::optional<VkDeviceSize> uboDynamicAlignment;
+	
+	// this still relevent? \/\/\/ -
+	/*
+	 `index` is the index of this descriptor set's layout in 'Vulkan::RenderPipeline::descriptorSetLayouts',
+	 
+	 `pipeline.descriptorSetNumber*flightIndex`,
+	 `pipeline.descriptorSetNumber*flightIndex + 1`
+	 ...
+	 `pipeline.descriptorSetNumber*flightIndex + pipeline.descriptorSetNumber - 1`
+	 are the indices of this descriptors flying sets in 'pipeline.descriptorSetsFlying'
+	 */
+	// /\/\/\ -
+};
+
+
+// Uniforms
+// -----
+template <typename uniformTP, typename indexSequenceT> struct UniformsImpl {};
+template <typename... uniformTs, template <uint32_t...> std::integer_sequence indexSequence, uint32_t... indices> struct UniformsImpl<TypePack<uniformTs...>, indexSequence<uint32_t, indices...>> {
+	
+	static_assert(UniformUnique<uniformTs...>(), "No two uniforms should have both matching set and binding.");
+	
+	static_assert((AllSmallerSetsExistInUniforms<uniformTs::setValue, uniformTs...>() && ...), "The union of descriptor set indices for a shader should be consecutive and contain 0.");
+	
+	template <uint32_t set> requires (DescriptorSetExistsInUniforms<set, uniformTs...>())
+	using iDescriptorSet = DescriptorSet<FilteredDescriptorPack<set, uniformTs...>>;
+	
+	static constexpr uint32_t descriptorSetCount = DescriptorSetCount<uniformTs...>();
+	
+	template <uint32_t index>
+	iDescriptorSet<index> &DescriptorSet(){ return std::get<index>(descriptorSets); }
+	
+private:
+	std::tuple<iDescriptorSet<indices>...> descriptorSets;
+};
+
+template <typename... uniformTs> using Uniforms = UniformsImpl<TypePack<uniformTs...>, std::make_integer_sequence<uint32_t, DescriptorSetCount<uniformTs...>()>{}>;
+
+
+// Shader
+// -----
+template <typename PushConstantsT, typename uniformTs...> struct Shader {
+	using pushConstantsPackType = std::conditional_t<std::same_as<PushConstantsT, NoPushConstants>, TypePack<>, TypePack<PushConstantsT>>;
+	using uniformsPackType = TypePack<uniformTs...>;
+};
+template <typename PushConstantsT, typename UniformsT, typename AttributesT>
+struct VertexShader : public Shader<PushConstantsT, UniformsT> {
+	AttributesT attributes;
+};
+
+
+// Shader program
+// -----
+template <typename pushConstantTP, typename UniformsT>
+struct ShaderProgramBase {};
+
+template <typename... pushConstantTs, typename UniformsT>
+struct ShaderProgramBase<TypePack<pushConstantTs...>, UniformsT> {
+	ShaderProgramBase(Interface &_vulkan, const PipelineBlueprint &blueprint);
+	
+	~ShaderProgramBase(){
+		vkDestroyDescriptorPool(vulkan.devices.logicalDevice, descriptorPool, nullptr);
+		vkDestroyPipeline(vulkan.devices.logicalDevice, pipeline, nullptr);
+		vkDestroyPipelineLayout(vulkan.devices.logicalDevice, layout, nullptr);
+		for(VkDescriptorSetLayout &dsl : descriptorSetLayouts){
+			vkDestroyDescriptorSetLayout(vulkan.devices.logicalDevice, dsl, nullptr);
+		}
+	}
+	
+	// ----- Methods to call after Init() -----
+	// Bind the pipeline for subsequent render calls
+	virtual void Bind() = 0;
+	// Set which descriptor sets are bound for subsequent render calls
+	virtual void BindDescriptorSets(int first=0, int number=0, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) = 0;
+	void UpdateDescriptorSets(uint32_t first=0); // have to do this every time any elements of any descriptors are changed, e.g. when an image view is re-created upon window resize
+	// Set push constant data
+	template <uint32_t index>
+	void CmdPushConstants(IndexT<index, pushConstantTs...>::type *data){
+		using pushConstantT = IndexT<index, pushConstantTs...>;
+		vkCmdPushConstants(vulkan.commandBuffersFlying[vulkan.currentFrame],
+						   layout,
+						   pushConstantT::stageFlagsValue,
+						   pushConstantT::offsetValue,
+						   sizeof(pushConstantT::type),
+						   data);
+	}
+	
+	// Get the handle of a descriptor set
+	template <uint32_t index>
+	UniformsT::iDescriptorSet<index> &DS(){ return uniforms.DescriptorSet<index>(); }
+	
+protected:
+	Interface &vulkan;
+	
+	UniformsT uniforms;
+	
+	std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
+	std::vector<VkDescriptorSet> descriptorSetsFlying;
+	VkDescriptorPool descriptorPool;
+	
+	std::tuple<pushConstantTs...> pushConstants;
+	
+	VkPipelineLayout layout;
+	VkPipeline pipeline;
+};
+
+template <typename vertexShaderT, typename fragmentShaderT>
+struct GraphicsShaderProgram : public ShaderProgramBase<
+	ConcatenatedPack<vertexShaderT::pushConstantsPackType, fragmentShaderT::pushConstantsPackType>,
+	Uniforms<ConcatenatedPack<vertexShaderT::uniformsPackType, fragmentShaderT::uniformsPackType>>
+> {
+	GraphicsPipeline(Interface &_vulkan, const GraphicsPipelineBlueprint &blueprint);
+	~GraphicsPipeline(){
+		vkDestroyShaderModule(vulkan.devices.logicalDevice, fragShaderModule, nullptr);
+		vkDestroyShaderModule(vulkan.devices.logicalDevice, vertShaderModule, nullptr);
+	}
+	
+	void Bind() override;
+	void BindDescriptorSets(int first=0, int number=0, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) override;
+	
+private:
+	vertexShaderT vertexShader;
+	fragmentShaderT fragmentShader;
+	
+//			VkShaderModule vertShaderModule; ?
+//			VkShaderModule fragShaderModule; ?
+};
+
+template <typename computeShaderT>
+struct ComputeShaderProgram : public ShaderProgramBase<computeShaderT::pushConstantsPackType> {
+	ComputePipeline(Interface &_vulkan, const ComputePipelineBlueprint &blueprint);
+	~ComputePipeline(){
+		vkDestroyShaderModule(vulkan.devices.logicalDevice, shaderModule, nullptr);
+	}
+	
+	void Bind() override;
+	void BindDescriptorSets(int first=0, int number=0, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) override;
+	
+private:
+	computeShaderT computeShader;
+	
+//		VkShaderModule shaderModule; ?
+};
+
+
+
+
+template <typename... shaderProgramTs>
 class Interface {
-	class Pipeline;
-	class GraphicsPipeline;
-	class ComputePipeline;
 public:
 	Interface(const InterfaceBlueprint &info);
 	~Interface();
@@ -564,219 +955,7 @@ private:
 	std::vector<std::optional<VertexBufferObject>> vertexBufferObjects;
 	std::vector<std::optional<IndexBufferObject>> indexBufferObjects;
 	
-	class Pipeline {
-	protected:
-		class DescriptorSet;
-		
-	public:
-		// The pipline constructor initialises all the contained descriptor sets
-		Pipeline(Interface &_vulkan, const PipelineBlueprint &blueprint);
-		
-		~Pipeline(){
-			vkDestroyDescriptorPool(vulkan.devices.logicalDevice, descriptorPool, nullptr);
-			vkDestroyPipeline(vulkan.devices.logicalDevice, pipeline, nullptr);
-			vkDestroyPipelineLayout(vulkan.devices.logicalDevice, layout, nullptr);
-			for(VkDescriptorSetLayout &dsl : descriptorSetLayouts){
-				vkDestroyDescriptorSetLayout(vulkan.devices.logicalDevice, dsl, nullptr);
-			}
-		}
-		
-		// ----- Methods to call after Init() -----
-		// Bind the pipeline for subsequent render calls
-		virtual void Bind() = 0;
-		// Set which descriptor sets are bound for subsequent render calls
-		virtual void BindDescriptorSets(int first=0, int number=0, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) = 0;
-		void UpdateDescriptorSets(uint32_t first=0); // have to do this every time any elements of any descriptors are changed, e.g. when an image view is re-created upon window resize
-		// Set push constant data
-		template <typename T> void CmdPushConstants(int index, T *data){
-			assert(pushConstantRanges[index].size == sizeof(T));
-			vkCmdPushConstants(vulkan.commandBuffersFlying[vulkan.currentFrame], layout, pushConstantRanges[index].stageFlags, pushConstantRanges[index].offset, pushConstantRanges[index].size, data);
-		}
-		
-		// Get the handle of a descriptor set
-		DescriptorSet &DS(int index){ return *descriptorSets[index]; }
-		
-	protected:
-		Interface &vulkan;
-		
-		class DescriptorSet {
-			class Descriptor;
-		public:
-			DescriptorSet(Pipeline &_pipeline, int _index, const DescriptorSetBlueprint &blueprint);
-			~DescriptorSet(){}
-			
-			// For initialisation
-			void InitLayouts();
-			void Update();
-			
-			size_t GetDescriptorCount() const { return descriptors.size(); }
-			std::shared_ptr<Descriptor> GetDescriptor(int index) const { return descriptors[index]; }
-			bool GetUBODynamic() const { return uboDynamicAlignment.has_value(); }
-			const std::optional<VkDeviceSize> &GetUBODynamicAlignment() const { return uboDynamicAlignment; }
-			
-		private:
-			Pipeline &pipeline;
-			int index;
-			
-			std::vector<std::shared_ptr<Descriptor>> descriptors;
-			
-			// ubo info
-			std::optional<VkDeviceSize> uboDynamicAlignment;
-			
-			// this still relevent? \/\/\/
-			/*
-			 `index` is the index of this descriptor set's layout in 'Vulkan::RenderPipeline::descriptorSetLayouts',
-			 
-			 `pipeline.descriptorSetNumber*flightIndex`,
-			 `pipeline.descriptorSetNumber*flightIndex + 1`
-			 ...
-			 `pipeline.descriptorSetNumber*flightIndex + pipeline.descriptorSetNumber - 1`
-			 are the indices of this descriptors flying sets in 'pipeline.descriptorSetsFlying'
-			 */
-			// /\/\/\
-			
-			class Descriptor {
-			public:
-				Descriptor(DescriptorSet &_descriptorSet, uint32_t _binding, const VkShaderStageFlags &_stageFlags) : descriptorSet(_descriptorSet), binding(_binding), stageFlags(_stageFlags) {}
-				virtual ~Descriptor(){}
-				
-				virtual VkDescriptorSetLayoutBinding LayoutBinding() const = 0;
-				
-				virtual VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const = 0;
-				
-				virtual VkDescriptorPoolSize PoolSize() const = 0;
-				
-			protected:
-				DescriptorSet &descriptorSet;
-				uint32_t binding;
-				VkShaderStageFlags stageFlags;
-			};
-			class UBODescriptor : public Descriptor {
-			public:
-				UBODescriptor(DescriptorSet &_descriptorSet, uint32_t _binding, const VkShaderStageFlags &_stageFlags, int _index) : Descriptor(_descriptorSet, _binding, _stageFlags), index(_index) {}
-				
-				VkDescriptorSetLayoutBinding LayoutBinding() const override;
-				
-				VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
-				
-				VkDescriptorPoolSize PoolSize() const override;
-				
-			private:
-				int index;
-			};
-			class SBODescriptor : public Descriptor {
-			public:
-				SBODescriptor(DescriptorSet &_descriptorSet, uint32_t _binding, const VkShaderStageFlags &_stageFlags, int _index, int _flightOffset) : Descriptor(_descriptorSet, _binding, _stageFlags), index(_index), flightOffset(_flightOffset) {}
-				
-				VkDescriptorSetLayoutBinding LayoutBinding() const override;
-				
-				VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
-				
-				VkDescriptorPoolSize PoolSize() const override;
-				
-			private:
-				int index;
-				int flightOffset;
-			};
-			class TextureImagesDescriptor : public Descriptor {
-			public:
-				TextureImagesDescriptor(DescriptorSet &_descriptorSet, uint32_t _binding, const VkShaderStageFlags &_stageFlags, const std::vector<int> &_indices) : Descriptor(_descriptorSet, _binding, _stageFlags), indices(_indices) {}
-				
-				VkDescriptorSetLayoutBinding LayoutBinding() const override;
-				
-				VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
-				
-				VkDescriptorPoolSize PoolSize() const override;
-				
-			private:
-				std::vector<int> indices;
-			};
-			class TextureSamplersDescriptor : public Descriptor {
-			public:
-				TextureSamplersDescriptor(DescriptorSet &_descriptorSet, uint32_t _binding, const VkShaderStageFlags &_stageFlags, const std::vector<int> &_indices) : Descriptor(_descriptorSet, _binding, _stageFlags), indices(_indices) {}
-				
-				VkDescriptorSetLayoutBinding LayoutBinding() const override;
-				
-				VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
-				
-				VkDescriptorPoolSize PoolSize() const override;
-				
-			private:
-				std::vector<int> indices;
-			};
-			class CombinedImageSamplersDescriptor : public Descriptor {
-			public:
-				CombinedImageSamplersDescriptor(DescriptorSet &_descriptorSet, uint32_t _binding, const VkShaderStageFlags &_stageFlags, const std::vector<int> &_textureImageIndices, const std::vector<int> &_samplerIndices) : Descriptor(_descriptorSet, _binding, _stageFlags), textureImageIndices(_textureImageIndices), samplerIndices(_samplerIndices) {
-					assert(_textureImageIndices.size() == _samplerIndices.size());
-				}
-				
-				VkDescriptorSetLayoutBinding LayoutBinding() const override;
-				
-				VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
-				
-				VkDescriptorPoolSize PoolSize() const override;
-				
-			private:
-				std::vector<int> textureImageIndices;
-				std::vector<int> samplerIndices;
-			};
-			class StorageImagesDescriptor : public Descriptor {
-			public:
-				StorageImagesDescriptor(DescriptorSet &_descriptorSet, uint32_t _binding, const VkShaderStageFlags &_stageFlags, const std::vector<int> &_indices) : Descriptor(_descriptorSet, _binding, _stageFlags), indices(_indices) {}
-				
-				VkDescriptorSetLayoutBinding LayoutBinding() const override;
-				
-				VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
-				
-				VkDescriptorPoolSize PoolSize() const override;
-				
-			private:
-				std::vector<int> indices;
-			};
-		};
-		
-		std::vector<std::shared_ptr<DescriptorSet>> descriptorSets;
-		
-		std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
-		std::vector<VkDescriptorSet> descriptorSetsFlying;
-		VkDescriptorPool descriptorPool;
-		
-		std::vector<VkPushConstantRange> pushConstantRanges;
-		
-		VkPipelineLayout layout;
-		VkPipeline pipeline;
-	};
-	class GraphicsPipeline : public Pipeline {
-	public:
-		GraphicsPipeline(Interface &_vulkan, const GraphicsPipelineBlueprint &blueprint);
-		~GraphicsPipeline(){
-			vkDestroyShaderModule(vulkan.devices.logicalDevice, fragShaderModule, nullptr);
-			vkDestroyShaderModule(vulkan.devices.logicalDevice, vertShaderModule, nullptr);
-		}
-		
-		void Bind() override;
-		void BindDescriptorSets(int first=0, int number=0, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) override;
-		
-	private:
-		VkShaderModule vertShaderModule;
-		VkShaderModule fragShaderModule;
-	};
-	std::vector<std::shared_ptr<GraphicsPipeline>> graphicsPipelines;
-	
-	class ComputePipeline : public Pipeline {
-	public:
-		ComputePipeline(Interface &_vulkan, const ComputePipelineBlueprint &blueprint);
-		~ComputePipeline(){
-			vkDestroyShaderModule(vulkan.devices.logicalDevice, shaderModule, nullptr);
-		}
-		
-		void Bind() override;
-		void BindDescriptorSets(int first=0, int number=0, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) override;
-		
-	private:
-		VkShaderModule shaderModule;
-	};
-	std::vector<std::shared_ptr<ComputePipeline>> computePipelines;
+	std::tuple<shaderProgramTs...> shaderPrograms;
 	
 	// Depth image
 	VkImage depthImage;

@@ -1,4 +1,4 @@
-#include <StaticTest.hpp>
+#include <Static.hpp>
 
 namespace Static {
 
