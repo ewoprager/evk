@@ -4,72 +4,122 @@
 
 #include "Devices.hpp"
 
-#include "Descriptors/UBO.hpp"
-#include "Descriptors/SBO.hpp"
-#include "Descriptors/TextureImages.hpp"
-#include "Descriptors/TextureSamplers.hpp"
-#include "Descriptors/CombinedImageSampelers.hpp"
-#include "Descriptors/StorageImages.hpp"
+#include "UBO.hpp"
+#include "SBO.hpp"
+#include "TextureImages.hpp"
+#include "TextureSamplers.hpp"
+#include "CombinedImageSamplers.hpp"
+#include "StorageImages.hpp"
 
 namespace EVK {
 
 // Push constants
 // -----
 struct NoPushConstants {};
-template <VkShaderStageFlags stageFlags, size_t offset, typename T> struct PushConstants {
-	static constexpr VkShaderStageFlags stageFlagsValue = stageFlags;
+template <size_t offset, typename T> struct PushConstants {
 	static constexpr uint32_t offsetValue = offset;
 	using type = T;
-	
+};
+template <VkShaderStageFlags stageFlags, typename T> struct WithShaderStage {
+	static constexpr VkShaderStageFlags stageFlagsValue = stageFlags;
+	using type = T;
+};
+template <VkShaderStageFlags stageFlags, size_t offset, typename T>
+struct WithShaderStage<stageFlags, PushConstants<offset, T>> {
 	static constexpr VkPushConstantRange rangeValue = {stageFlags, offset, sizeof(T)};
 };
 
+// merge one WithShaderStage into a pack of pre-merged WithShaderStages
+template <typename checkedTP, typename withShaderStageT, typename notCheckedTP> struct MergeIn {};
+template <typename... checkedTs, typename withShaderStageT> struct MergeIn<TypePack<checkedTs...>, withShaderStageT, TypePack<>> {
+	using packType = TypePack<checkedTs..., withShaderStageT>;
+};
+template <typename... checkedTs, typename withShaderStageT, typename notCheckedT> struct MergeIn<TypePack<checkedTs...>, withShaderStageT, TypePack<notCheckedT>> {
+	using packType = std::conditional_t<
+	std::same_as<typename withShaderStageT::type, typename notCheckedT::type>,
+	TypePack<checkedTs..., WithShaderStage<withShaderStageT::stageFlagsValue | notCheckedT::stageFlagsValue, typename withShaderStageT::type>>,
+	TypePack<checkedTs..., withShaderStageT, notCheckedT>
+	>;
+};
+template <typename... checkedTs, typename withShaderStageT, typename notCheckedT, typename other, typename... rest> struct MergeIn<TypePack<checkedTs...>, withShaderStageT, TypePack<notCheckedT, other, rest...>> {
+	using packType = std::conditional_t<
+	std::same_as<typename withShaderStageT::type, typename notCheckedT::type>,
+	TypePack<checkedTs..., WithShaderStage<withShaderStageT::stageFlagsValue | notCheckedT::stageFlagsValue, typename withShaderStageT::type>, other, rest...>,
+	typename MergeIn<TypePack<checkedTs..., notCheckedT>, withShaderStageT, TypePack<other, rest...>>::packType
+	>;
+};
+template <typename withShaderStageT, typename mergedTP>
+using MergeIn_t = typename MergeIn<TypePack<>, withShaderStageT, mergedTP>::packType;
+
+// merge all of a pack of WithShaderStages together
+template <typename mergedTP, typename unmergedTP> struct Merge {};
+template <typename... mergedTs> struct Merge<TypePack<mergedTs...>, TypePack<>> {
+	using packType = TypePack<mergedTs...>;
+};
+template <typename... mergedTs, typename unmergedT> struct Merge<TypePack<mergedTs...>, TypePack<unmergedT>> {
+	using packType = MergeIn_t<unmergedT, TypePack<mergedTs...>>;
+};
+template <typename... mergedTs, typename unmergedT, typename U, typename... rest> struct Merge<TypePack<mergedTs...>, TypePack<unmergedT, U, rest...>> {
+	using packType = typename Merge<MergeIn_t<unmergedT, TypePack<mergedTs...>>, TypePack<U, rest...>>::packType;
+};
+template <typename withShaderStageTP>
+using Merge_t = typename Merge<TypePack<>, withShaderStageTP>::packType;
+
+
 // Uniform
 // -----
-template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags> struct UniformBase {
+template <uint32_t set, uint32_t binding> struct UniformBase {
 	static constexpr uint32_t setValue = set;
 	static constexpr uint32_t bindingValue = binding;
-	
-	using descriptorType = DescriptorBase<binding, stageFlags>;
 };
 
-template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags, bool dynamic=false>
-struct UBO : public UniformBase<set, binding, stageFlags> {
+template <uint32_t set, uint32_t binding, bool dynamic=false>
+struct UBO : public UniformBase<set, binding> {
+	template <VkShaderStageFlags stageFlags>
 	using descriptorType = UBODescriptor<binding, stageFlags, dynamic>;
 };
-template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags>
-struct SBO : public UniformBase<set, binding, stageFlags> {
+template <uint32_t set, uint32_t binding>
+struct SBO : public UniformBase<set, binding> {
+	template <VkShaderStageFlags stageFlags>
 	using descriptorType = SBODescriptor<binding, stageFlags>;
 };
-template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags, uint32_t count=1>
-struct TextureImages : public UniformBase<set, binding, stageFlags> {
+template <uint32_t set, uint32_t binding, uint32_t count=1>
+struct TextureImages : public UniformBase<set, binding> {
+	template <VkShaderStageFlags stageFlags>
 	using descriptorType = TextureImagesDescriptor<binding, stageFlags, count>;
 };
-template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags, uint32_t count=1>
-struct TextureSamplers : public UniformBase<set, binding, stageFlags> {
+template <uint32_t set, uint32_t binding, uint32_t count=1>
+struct TextureSamplers : public UniformBase<set, binding> {
+	template <VkShaderStageFlags stageFlags>
 	using descriptorType = TextureSamplersDescriptor<binding, stageFlags, count>;
 };
-template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags, uint32_t count=1>
-struct CombinedImageSamplers : public UniformBase<set, binding, stageFlags> {
+template <uint32_t set, uint32_t binding, uint32_t count=1>
+struct CombinedImageSamplers : public UniformBase<set, binding> {
+	template <VkShaderStageFlags stageFlags>
 	using descriptorType = CombinedImageSamplersDescriptor<binding, stageFlags, count>;
 };
-template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags, uint32_t count=1>
-struct StorageImages : public UniformBase<set, binding, stageFlags> {
+template <uint32_t set, uint32_t binding, uint32_t count=1>
+struct StorageImages : public UniformBase<set, binding> {
+	template <VkShaderStageFlags stageFlags>
 	using descriptorType = StorageImagesDescriptor<binding, stageFlags, count>;
 };
 
 template <typename uniformT, typename... uniformTs> consteval bool UniformContains(){
-	return ((uniformT::UniformBase::setValue == uniformTs::UniformBase::setValue && uniformT::UniformBase::bindingValue == uniformTs::UniformBase::bindingValue) || ...);
+	return ((uniformT::type::setValue == uniformTs::type::setValue && uniformT::type::bindingValue == uniformTs::type::bindingValue) || ...);
 }
 template <typename uniformT> consteval bool UniformUnique(){ return true; }
 template <typename uniformT1, typename uniformT2, typename... uniformTs> consteval bool UniformUnique(){
 	return !UniformContains<uniformT1, uniformT2, uniformTs...>() && UniformUnique<uniformT2, uniformTs...>();
 }
 
-template <unsigned set, typename uniformT>
-using FilteredDescriptorPackOne = std::conditional_t<uniformT::setValue == set, TypePack<typename uniformT::descriptorType>, TypePack<>>;
+template <uint32_t set, typename uniformT>
+using FilteredDescriptorPackOne = std::conditional_t<
+uniformT::type::setValue == set,
+TypePack<uniformT::type::descriptorType<uniformT::stageFlagsValue>>,
+TypePack<>
+>;
 
-template <unsigned set, typename... uniformTs>
+template <uint32_t set, typename... uniformTs>
 using FilteredDescriptorPack = ConcatenatedPack_t<FilteredDescriptorPackOne<set, uniformTs>...>;
 
 template <uint32_t set, typename... uniformTs> static consteval
@@ -88,10 +138,11 @@ uint32_t DescriptorSetCount(){ return DescriptorSetCountImpl<0, uniformTs...>();
 
 template <uint32_t set, typename... uniformTs> static consteval
 bool AllSmallerSetsExistInUniforms(){
-	if constexpr (set == 0)
+	if constexpr (set == 0){
 		return DescriptorSetExistsInUniforms<0, uniformTs...>();
-	else
-		return DescriptorSetExistsInUniforms<set, uniformTs..>() && AllSmallerSetsExistInUniforms<set - 1, uniformTs..>();
+	} else {
+		return DescriptorSetExistsInUniforms<set, uniformTs...>() && AllSmallerSetsExistInUniforms<set - 1, uniformTs...>();
+	}
 }
 
 
@@ -170,7 +221,7 @@ struct DescriptorSet<TypePack<descriptorTs...>> {
 		return handle;
 	}
 	
-	void Update(const std::function<VkDescriptorSet(uint32_t) &dstSetFromFlight){
+	void Update(const std::function<VkDescriptorSet(uint32_t)> &dstSetFromFlight){
 		VkDescriptorBufferInfo bufferInfos[32];
 		VkDescriptorImageInfo imageInfos[256];
 		int bufferInfoCounter, imageInfoCounter;
@@ -186,7 +237,7 @@ struct DescriptorSet<TypePack<descriptorTs...>> {
 				([&](){
 					const std::optional<VkWriteDescriptorSet> maybeDescriptorWrite = std::get<indices>(descriptors).DescriptorWrite(dstSetFromFlight(i)/*pipeline.descriptorSetsFlying[pipeline.descriptorSets.size() * i + index]*/, imageInfos, imageInfoCounter, bufferInfos, bufferInfoCounter, i);
 					if(maybeDescriptorWrite){
-						descriptorWrites.push_back(maybeDescriptorWrite);
+						descriptorWrites.push_back(maybeDescriptorWrite.value());
 					}
 				}(), ...);
 			}(std::make_integer_sequence<uint32_t, descriptorCount>{});
@@ -225,21 +276,22 @@ private:
 // Uniforms
 // -----
 template <typename uniformTP, typename indexSequenceT> struct UniformsImpl {};
-template <typename... uniformTs, template <uint32_t...> std::integer_sequence indexSequence, uint32_t... indices> struct UniformsImpl<TypePack<uniformTs...>, indexSequence<uint32_t, indices...>> {
+template <typename... uniformTs, uint32_t... indices>
+struct UniformsImpl<TypePack<uniformTs...>, std::integer_sequence<uint32_t, indices...>> {
 	
 	static_assert(UniformUnique<uniformTs...>(), "No two uniforms should have both matching set and binding.");
 	
-	static_assert((AllSmallerSetsExistInUniforms<uniformTs::setValue, uniformTs...>() && ...), "The union of descriptor set indices for a shader should be consecutive and contain 0.");
+	static_assert((AllSmallerSetsExistInUniforms<uniformTs::type::setValue, uniformTs...>() && ...), "The union of descriptor set indices for a shader should be consecutive and contain 0.");
 	
 	template <uint32_t set> requires (DescriptorSetExistsInUniforms<set, uniformTs...>())
 	using iDescriptorSet = DescriptorSet<FilteredDescriptorPack<set, uniformTs...>>;
 	
 	static constexpr uint32_t descriptorSetCount = DescriptorSetCount<uniformTs...>();
 	
-	static constexpr uint32_t uniformCount = CountT<unifomTs...>();
+	static constexpr uint32_t uniformCount = CountT<uniformTs...>();
 	static_assert((iDescriptorSet<indices>::descriptorCount + ...) == uniformCount, "!Inconsistency");
 	
-	static constexpr std::array<VkDescriptorPoolSize, uniformCount> poolSizes = {uniformTs::descriptorType::PoolSize(), ...)};
+	static constexpr std::array<VkDescriptorPoolSize, uniformCount> poolSizes = {uniformTs::type::descriptorType<uniformTs::stageFlagsValue>>::PoolSize(), ...)};
 	
 	template <uint32_t index>
 	iDescriptorSet<index> &DescriptorSet(){ return std::get<index>(descriptorSets); }
@@ -312,21 +364,27 @@ private:
 	VkDescriptorPool descriptorPool;
 };
 
-template <typename... uniformTs> using Uniforms = UniformsImpl<TypePack<uniformTs...>, std::make_integer_sequence<uint32_t, DescriptorSetCount<uniformTs...>()>{}>;
+template <typename... uniformTs>
+using Uniforms = UniformsImpl<TypePack<uniformTs...>, std::make_integer_sequence<uint32_t, DescriptorSetCount<uniformTs...>()>>;
 
 
 // Shader
 // -----
-template <typename filenameStringT, typename PushConstantsT, typename uniformTs...> struct Shader {
-	using pushConstantsPackType = std::conditional_t<std::same_as<PushConstantsT, NoPushConstants>, TypePack<>, TypePack<PushConstantsT>>;
+template <VkShaderStageFlags shaderStage, typename filenameStringT, typename PushConstantsT, typename... uniformTs>
+struct Shader {
+	using pushConstantsPackType = std::conditional_t<
+	std::same_as<PushConstantsT, NoPushConstants>,
+	TypePack<>,
+	TypePack<WithShaderStage<shaderStage, PushConstantsT>>
+	>;
+	
+	using uniformsPackType = TypePack<WithShaderStage<shaderStage, uniformTs>...>;
 	
 	static constexpr std::string filename = filenameStringT::string;
-	
-	using uniformsPackType = TypePack<uniformTs...>;
 };
-template <typename filenameStringT, typename PushConstantsT, typename UniformsT, typename AttributesT>
+template <typename filenameStringT, typename PushConstantsT, typename AttributesT, typename... uniformTs>
 struct VertexShader
-: public Shader<filenameStringT, PushConstantsT, UniformsT> {
+: public Shader<VK_SHADER_STAGE_VERTEX_BIT, filenameStringT, PushConstantsT, uniformTs...> {
 	
 	using AttributesType = AttributesT;
 	
@@ -356,7 +414,7 @@ struct ShaderProgramBase<TypePack<pushConstantTs...>, UniformsT> {
 			.pushConstantRangeCount = pushConstantCount,
 			.pPushConstantRanges = pushConstantCount == 0 ? nullptr : pushConstantRanges.data()
 		};
-		if(vkCreatePipelineLayout(vulkan.devices.logicalDevice, &pipelineLayoutInfo, nullptr, &layout) != VK_SUCCESS){
+		if(vkCreatePipelineLayout(devices->GetLogicalDevice(), &pipelineLayoutInfo, nullptr, &layout) != VK_SUCCESS){
 			throw std::runtime_error("Failed to create pipeline layout!");
 		}
 	}
@@ -368,11 +426,11 @@ struct ShaderProgramBase<TypePack<pushConstantTs...>, UniformsT> {
 	
 	// ----- Methods to call after Init() -----
 	// Bind the pipeline for subsequent render calls
-	void Bind(VkCommandBuffer commandBuffer) const {
+	void CmdBind(VkCommandBuffer commandBuffer) const {
 		vkCmdBindPipeline(commandBuffer, BindPoint(), pipeline);
 	}
 	// Set which descriptor sets are bound for subsequent render calls
-	void BindDescriptorSets(VkCommandBuffer commandBuffer, int flight, int first=0, int number=0, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) const {
+	void CmdBindDescriptorSets(VkCommandBuffer commandBuffer, int flight, int first=0, int number=0, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) const {
 		
 		if(number < 1){
 			number = int(UniformsT::descriptorSetCount) - first;
@@ -394,9 +452,9 @@ struct ShaderProgramBase<TypePack<pushConstantTs...>, UniformsT> {
 	void UpdateDescriptorSets(uint32_t first=0); // have to do this every time any elements of any descriptors are changed, e.g. when an image view is re-created upon window resize
 	// Set push constant data
 	template <uint32_t index>
-	void CmdPushConstants(IndexT<index, pushConstantTs...>::type *data){
-		using pushConstantT = IndexT<index, pushConstantTs...>;
-		vkCmdPushConstants(vulkan.commandBuffersFlying[vulkan.currentFrame],
+	void CmdPushConstants(VkCommandBuffer commandBuffer, IndexT<index, pushConstantTs...>::type *data){
+		using pushConstantT = IndexT<index, pushConstantTs...>::type;
+		vkCmdPushConstants(commandBuffer,
 						   layout,
 						   pushConstantT::stageFlagsValue,
 						   pushConstantT::offsetValue,
@@ -412,8 +470,6 @@ protected:
 	std::shared_ptr<Devices> devices;
 	
 	UniformsT uniforms;
-	
-	std::tuple<pushConstantTs...> pushConstants;
 	
 	VkPipelineLayout layout;
 	
@@ -434,10 +490,10 @@ struct GraphicsPipelineBlueprint {
 
 template <typename vertexShaderT, typename fragmentShaderT>
 struct GraphicsShaderProgram : public ShaderProgramBase<
-	ConcatenatedPack<vertexShaderT::pushConstantsPackType, fragmentShaderT::pushConstantsPackType>,
-	Uniforms<ConcatenatedPack<vertexShaderT::uniformsPackType, fragmentShaderT::uniformsPackType>>
+	Merge_t<ConcatenatedPack_t<vertexShaderT::pushConstantsPackType, fragmentShaderT::pushConstantsPackType>>,
+	Uniforms<Merge_t<ConcatenatedPack_t<vertexShaderT::uniformsPackType, fragmentShaderT::uniformsPackType>>>
 > {
-	GraphicsPipeline(std::shared_ptr<Devices> _devices, const GraphicsPipelineBlueprint &blueprint)
+	GraphicsShaderProgram(std::shared_ptr<Devices> _devices, const GraphicsPipelineBlueprint &blueprint)
 	: ShaderProgramBase(_devices) {
 		// ----- Input assembly info -----
 		const VkPipelineInputAssemblyStateCreateInfo inputAssembly {
@@ -489,11 +545,11 @@ struct GraphicsShaderProgram : public ShaderProgramBase<
 			.basePipelineHandle = VK_NULL_HANDLE, // Optional
 			.basePipelineIndex = -1 // Optional
 		};
-		if(vkCreateGraphicsPipelines(vulkan.devices.logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS){
+		if(vkCreateGraphicsPipelines(vulkan.devices->logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS){
 			throw std::runtime_error("failed to create graphics pipeline!");
 		}
 	}
-	~GraphicsPipeline(){
+	~GraphicsShaderProgram(){
 //		vkDestroyShaderModule(devices->GetLogicalDevice(), fragShaderModule, nullptr);
 //		vkDestroyShaderModule(devices->GetLogicalDevice(), vertShaderModule, nullptr);
 	}

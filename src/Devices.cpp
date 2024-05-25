@@ -1,9 +1,10 @@
 #include <set>
 #include <fstream>
+#include <iostream>
 
 #include <vma/vk_mem_alloc.h>
 
-#include <Base.hpp>
+#include <Devices.hpp>
 
 static std::vector<char> ReadFile(const char *filename){
 	std::ifstream ifs(filename, std::ios::binary | std::ios::ate);
@@ -297,8 +298,23 @@ Devices::Devices(const char *applicationName,
 		if(vmaCreateAllocator(&createInfo, &allocator) != VK_SUCCESS)
 			throw std::runtime_error("failed to create memory allocator!");
 	}
+	
+	// -----
+	// Creating the command pool
+	// -----
+	{
+		const VkCommandPoolCreateInfo poolInfo{
+			.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+			.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+			.queueFamilyIndex = queueFamilyIndices.graphicsAndComputeFamily.value()
+		};
+		if(vkCreateCommandPool(logicalDevice, &poolInfo, nullptr, &commandPool) != VK_SUCCESS){
+			throw std::runtime_error("failed to create command pool!");
+		}
+	}
 }
 Devices::~Devices(){
+	vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
 	vmaDestroyAllocator(allocator);
 	vkDestroyDevice(logicalDevice, nullptr);
 #ifndef NDEBUG

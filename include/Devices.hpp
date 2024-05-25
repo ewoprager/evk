@@ -1,23 +1,10 @@
 #pragma once
 
+#include <functional>
+
 #include "Header.hpp"
 
 namespace EVK {
-
-struct SwapChainSupportDetails {
-	VkSurfaceCapabilitiesKHR capabilities;
-	std::vector<VkSurfaceFormatKHR> formats;
-	std::vector<VkPresentModeKHR> presentModes;
-};
-
-struct QueueFamilyIndices {
-	std::optional<uint32_t> graphicsAndComputeFamily;
-	std::optional<uint32_t> presentFamily;
-	
-	bool IsComplete(){
-		return graphicsAndComputeFamily.has_value() && presentFamily.has_value();
-	}
-};
 
 class Devices {
 public:
@@ -42,13 +29,13 @@ public:
 	void GenerateMipmaps(VkImage image, VkFormat imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels) const;
 	void CopyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) const;
 	void TransitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, VkImageSubresourceRange subResourceRange) const;
-	void CopyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height, uint32_t depth) const;
+	void CopyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height, uint32_t depth=1) const;
 	
 	// Builders
 	// -----
 	VkShaderModule CreateShaderModule(const char *filename) const;
-	CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer &buffer, VmaAllocation &allocation, VmaAllocationInfo *allocationInfoDst) const;
-	CreateImage(const VkImageCreateInfo &imageCI, VkMemoryPropertyFlags properties, VkImage &image, VmaAllocation &allocation) const;
+	void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer &buffer, VmaAllocation &allocation, VmaAllocationInfo *allocationInfoDst=nullptr) const;
+	void CreateImage(const VkImageCreateInfo &imageCI, VkMemoryPropertyFlags properties, VkImage &image, VmaAllocation &allocation) const;
 	VkImageView CreateImageView(const VkImageViewCreateInfo &imageViewCI) const;
 	void CreateAndFillDeviceLocalBuffer(VkBuffer &bufferHandle, VmaAllocation &allocation, void *data, const VkDeviceSize &size, const VkBufferUsageFlags &usageFlags) const;
 	
@@ -66,6 +53,12 @@ public:
 	VkExtent2D GetSurfaceExtent() const { return getExtentFunction(); }
 	const VmaAllocator &GetAllocator() const { return allocator; }
 	const VkDevice &GetLogicalDevice() const { return logicalDevice; }
+	const QueueFamilyIndices &GetQueueFamilyIndices() const { return queueFamilyIndices; }
+	const VkCommandPool &GetCommandPool() const { return commandPool; }
+	const VkQueue &GraphicsQueue() const { return graphicsQueue; }
+	const VkQueue &PresentQueue() const { return presentQueue; }
+	const VkQueue &ComputeQueue() const { return computeQueue; }
+	const VkSurfaceKHR &Surface() const { return surface; }
 	
 private:
 	void CreateInstance(const char *applicationName, std::vector<const char *> requiredExtensions);
@@ -78,6 +71,7 @@ private:
 	QueueFamilyIndices queueFamilyIndices;
 	VkDevice logicalDevice;
 	VmaAllocator allocator;
+	VkCommandPool commandPool;
 	
 	VkDebugUtilsMessengerEXT debugMessenger;
 	

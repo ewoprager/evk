@@ -1,6 +1,10 @@
 #include <vma/vk_mem_alloc.h>
 
+#include <assert.h>
+
 #include <Resources.hpp>
+
+namespace EVK {
 
 void VertexBufferObject::Fill(void *vertices, const VkDeviceSize &size, const VkDeviceSize &offset){
 	// destroying old vertex buffer if it exists
@@ -40,7 +44,7 @@ void IndexBufferObject::Fill(uint32_t *indices, size_t indexCount, const VkDevic
 	}
 	
 	contents = Contents();
-	devices->CreateAndFillDeviceLocalBuffer(contents->bufferHandle, contents->allocation, vertices, VkDeviceSize(indexCount * sizeof(int32_t)), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+	devices->CreateAndFillDeviceLocalBuffer(contents->bufferHandle, contents->allocation, indices, VkDeviceSize(indexCount * sizeof(int32_t)), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 	contents->offset = offset;
 	contents->indexCount = uint32_t(indexCount);
 }
@@ -52,7 +56,7 @@ void IndexBufferObject::CleanUpContents(){
 	contents.reset();
 }
 
-UniformBufferObject::UniformBufferObject(std::shared_ptr<Devices> _devices, VkDeviceSize _size, std::optional<Dynamic> _dynamic = std::optional<Dynamic>())
+UniformBufferObject::UniformBufferObject(std::shared_ptr<Devices> _devices, VkDeviceSize _size, std::optional<Dynamic> _dynamic)
 : devices(std::move(_devices)), size(std::move(_size)), dynamic(std::move(_dynamic)) {
 	for(size_t i=0; i<MAX_FRAMES_IN_FLIGHT; ++i){
 		// creating buffer
@@ -87,7 +91,7 @@ bool StorageBufferObject::Fill(const std::vector<std::byte> &data){
 		return false;
 	}
 	for(int i=0; i<MAX_FRAMES_IN_FLIGHT; ++i){
-		devices->FillExistingDeviceLocalBuffer(buffersFlying[i], data.data(), size);
+		devices->FillExistingDeviceLocalBuffer(buffersFlying[i], (void *)(data.data()), size);
 	}
 	return true;
 }
@@ -98,7 +102,7 @@ TextureImage::TextureImage(std::shared_ptr<Devices> _devices, PNGImageBlueprint 
 	
 	if(!surface) throw std::runtime_error("failed to load texture image!");
 	
-	ConstructFromData(index, DataImageBlueprint{
+	ConstructFromData(DataImageBlueprint{
 		.data = (uint8_t *)surface->pixels,
 		.width = uint32_t(surface->w),
 		.height = uint32_t(surface->h),
@@ -106,7 +110,7 @@ TextureImage::TextureImage(std::shared_ptr<Devices> _devices, PNGImageBlueprint 
 		.format = VK_FORMAT_R8G8B8A8_SRGB,
 		.mip = true
 	});
-	//SDLPixelFormatToVulkanFormat((SDL_PixelFormatEnum)devices.surface->format->format); // 24 bit-depth images don't seem to work
+	//SDLPixelFormatToVulkanFormat((SDL_PixelFormatEnum)devices->surface->format->format); // 24 bit-depth images don't seem to work
 	
 	SDL_FreeSurface(surface);
 }
@@ -118,7 +122,7 @@ TextureImage::TextureImage(std::shared_ptr<Devices> _devices, Data3DImageBluepri
 : devices(std::move(_devices)) {
 	const VkDeviceSize imageSize = fromRaw3D.height * fromRaw3D.pitch * fromRaw3D.depth;
 	
-	// creating a staging buffer, copying in the pixels and then freeing the SDL devices.surface and the staging buffer memory allocation
+	// creating a staging buffer, copying in the pixels and then freeing the SDL devices->surface and the staging buffer memory allocation
 	VkBuffer stagingBuffer;
 	VmaAllocation stagingAllocation;
 	VmaAllocationInfo stagingAllocInfo;
@@ -154,7 +158,7 @@ TextureImage::TextureImage(std::shared_ptr<Devices> _devices, Data3DImageBluepri
 	devices->TransitionImageLayout(image, fromRaw3D.format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, subresourceRange);
 	devices->CopyBufferToImage(stagingBuffer, image, fromRaw3D.width, fromRaw3D.height, fromRaw3D.depth);
 	
-	vmaDestroyBuffer(devices.allocator, stagingBuffer, stagingAllocation);
+	vmaDestroyBuffer(devices->GetAllocator(), stagingBuffer, stagingAllocation);
 	
 	// Creating an image view for the texture image
 	view = devices->CreateImageView({
@@ -172,7 +176,7 @@ TextureImage::TextureImage(std::shared_ptr<Devices> _devices, Data3DImageBluepri
 }
 TextureImage::TextureImage(std::shared_ptr<Devices> _devices, CubemapPNGImageBlueprint fromPNGCubemaps)
 : devices(std::move(_devices)) {
-	// loading image onto an sdl devices.surface
+	// loading image onto an sdl devices->surface
 	std::array<SDL_Surface *, 6> surfaces;
 	surfaces[0] = IMG_Load(fromPNGCubemaps.imageFilenames[0].c_str());
 	if(!surfaces[0]) throw std::runtime_error("failed to load texture image!");
@@ -181,7 +185,7 @@ TextureImage::TextureImage(std::shared_ptr<Devices> _devices, CubemapPNGImageBlu
 	const uint32_t height = surfaces[0]->h;
 	const size_t faceSize = height * surfaces[0]->pitch;
 	const VkDeviceSize imageSize = 6 * faceSize;
-	const VkFormat imageFormat = VK_FORMAT_R8G8B8A8_SRGB;//SDLPixelFormatToVulkanFormat((SDL_PixelFormatEnum)devices.surface->format->format); // 24 bit-depth images don't seem to work
+	const VkFormat imageFormat = VK_FORMAT_R8G8B8A8_SRGB;//SDLPixelFormatToVulkanFormat((SDL_PixelFormatEnum)devices->surface->format->format); // 24 bit-depth images don't seem to work
 	
 	for(int i=1; i<6; i++){
 		surfaces[i] = IMG_Load(fromPNGCubemaps.imageFilenames[i].c_str());
@@ -190,7 +194,7 @@ TextureImage::TextureImage(std::shared_ptr<Devices> _devices, CubemapPNGImageBlu
 		assert(surfaces[i]->h == height);
 	}
 	
-	// creating a staging buffer, copying in the pixels and then freeing the SDL devices.surface and the staging buffer memory allocation
+	// creating a staging buffer, copying in the pixels and then freeing the SDL devices->surface and the staging buffer memory allocation
 	VkBuffer stagingBuffer;
 	VmaAllocation stagingAllocation;
 	VmaAllocationInfo stagingAllocInfo;
@@ -220,7 +224,7 @@ TextureImage::TextureImage(std::shared_ptr<Devices> _devices, CubemapPNGImageBlu
 	};
 	devices->CreateImage(imageCI, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, image, allocation);
 	
-	VkCommandBuffer commandBuffer = BeginSingleTimeCommands();
+	VkCommandBuffer commandBuffer = devices->BeginSingleTimeCommands();
 	
 	VkBufferImageCopy regions[6];
 	for(int face=0; face<6; face++){
@@ -248,9 +252,9 @@ TextureImage::TextureImage(std::shared_ptr<Devices> _devices, CubemapPNGImageBlu
 	
 	devices->TransitionImageLayout(image, imageFormat, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, subresourceRange);
 	
-	EndSingleTimeCommands(commandBuffer);
+	devices->EndSingleTimeCommands(commandBuffer);
 	
-	vmaDestroyBuffer(devices.allocator, stagingBuffer, stagingAllocation);
+	vmaDestroyBuffer(devices->GetAllocator(), stagingBuffer, stagingAllocation);
 	
 	// Creating an image view for the texture image
 	view = devices->CreateImageView({
@@ -278,7 +282,7 @@ void TextureImage::ConstructFromData(DataImageBlueprint _blueprint){
 	// calculated number of mipmap levels
 	mipLevels = _blueprint.mip ? uint32_t(floor(log2(double(_blueprint.width > _blueprint.height ? _blueprint.width : _blueprint.height)))) + 1 : 1;
 	
-	// creating a staging buffer, copying in the pixels and then freeing the SDL devices.surface and the staging buffer memory allocation
+	// creating a staging buffer, copying in the pixels and then freeing the SDL devices->surface and the staging buffer memory allocation
 	VkBuffer stagingBuffer;
 	VmaAllocation stagingAllocation;
 	VmaAllocationInfo stagingAllocInfo;
@@ -357,7 +361,7 @@ TextureSampler::TextureSampler(std::shared_ptr<Devices> _devices,
 							   const VkSamplerCreateInfo &samplerCI)
 : devices(_devices) {
 	
-	if(vkCreateSampler(devices->GetLogicalDevice(), &samplerCI, nullptr, &textureSamplers[index]) != VK_SUCCESS){
+	if(vkCreateSampler(devices->GetLogicalDevice(), &samplerCI, nullptr, &handle) != VK_SUCCESS){
 		throw std::runtime_error("Failed to create texture sampler!");
 	}
 }
@@ -399,7 +403,9 @@ bool BufferedRenderPass::SetImages(std::vector<std::shared_ptr<TextureImage>> im
 	
 	VkImageView attachments[images.size()];
 	for(int i=0; i<images.size(); ++i){
-		if(images[i]->Extent() != newSize){
+		if(images[i]->Extent().width != newSize.width ||
+		   images[i]->Extent().height != newSize.height ||
+		   images[i]->Extent().depth != newSize.depth){
 			std::cout << "All images must be the same size.\n";
 			return false;
 		}
@@ -419,12 +425,14 @@ bool BufferedRenderPass::SetImages(std::vector<std::shared_ptr<TextureImage>> im
 		.width = newSize.width,
 		.height = newSize.height,
 		.layers = 1
-	}
+	};
 	for(VkFramebuffer &fb : targets->frameBuffersFlying){
-		if(vkCreateFramebuffer(devices.GetLogicalDevice(), &frameBufferCI, nullptr, &fb) != VK_SUCCESS){
+		if(vkCreateFramebuffer(devices->GetLogicalDevice(), &frameBufferCI, nullptr, &fb) != VK_SUCCESS){
 			throw std::runtime_error("Failed to create framebuffer!");
 		}
 	}
 	
 	return true;
 }
+
+} // namespace EVK

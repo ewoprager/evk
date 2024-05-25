@@ -49,3 +49,17 @@ install(TARGETS ${PROJECT_NAME}
 		PUBLIC_HEADER DESTINATION "include/evk"
 )
 
+
+
+
+add_executable(test
+            "${CMAKE_CURRENT_SOURCE_DIR}/${SOURCES}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/${HEADERS}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/test/main.cpp"
+            )
+
+set_property(TARGET test PROPERTY CXX_STANDARD 20)
+
+target_link_libraries(test evk)
+
+set_target_properties(test PROPERTIES OUTPUT_NAME evk)

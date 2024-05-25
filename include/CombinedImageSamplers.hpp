@@ -9,7 +9,7 @@ class CombinedImageSamplersDescriptor : public DescriptorBase<binding, stageFlag
 public:
 	CombinedImageSamplersDescriptor() = default;
 	
-	static consteval VkDescriptorSetLayoutBinding LayoutBinding() const override {
+	static consteval VkDescriptorSetLayoutBinding LayoutBinding() {
 		return (VkDescriptorSetLayoutBinding){
 			.binding = binding,
 			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -43,7 +43,7 @@ public:
 		};
 	}
 	
-	static consteval VkDescriptorPoolSize PoolSize() const override {
+	static consteval VkDescriptorPoolSize PoolSize() {
 		return (VkDescriptorPoolSize){
 			.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 			.descriptorCount = count * MAX_FRAMES_IN_FLIGHT

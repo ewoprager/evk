@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 //#define MSAA
 
 #include <MoltenVK/mvk_vulkan.h>
@@ -31,7 +33,7 @@
 `[window](VkInstance instance) -> VkSurfaceKHR {
 	VkSurfaceKHR ret;
 	if(SDL_Vulkan_CreateSurface(window, instance, &ret) == SDL_FALSE)
-		throw std::runtime_error("failed to create window devices.surface!");
+		throw std::runtime_error("failed to create window devices->surface!");
 	return ret;
 }`
 		- Extent getter function:
@@ -84,5 +86,20 @@ namespace EVK {
 template <typename T> T PositiveModulo(const T &lhs, const T &rhs){
 	return ((lhs % rhs) + rhs) % rhs;
 }
+
+struct SwapChainSupportDetails {
+	VkSurfaceCapabilitiesKHR capabilities;
+	std::vector<VkSurfaceFormatKHR> formats;
+	std::vector<VkPresentModeKHR> presentModes;
+};
+
+struct QueueFamilyIndices {
+	std::optional<uint32_t> graphicsAndComputeFamily;
+	std::optional<uint32_t> presentFamily;
+	
+	bool IsComplete(){
+		return graphicsAndComputeFamily.has_value() && presentFamily.has_value();
+	}
+};
 
 } // namespace EVK

@@ -126,4 +126,3 @@ template <typename T> consteval uint32_t AttributeSizeInShader(){ return RoundUp
 //shader;
 
 } // namespace EVK
-
