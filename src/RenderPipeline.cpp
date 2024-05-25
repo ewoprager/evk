@@ -101,9 +101,9 @@ Interface::Pipeline::Pipeline(Interface &_vulkan, const PipelineBlueprint &bluep
 	}
 
 }
-void Interface::Pipeline::UpdateDescriptorSets(uint32_t first){
-	for(uint32_t i=first; i<descriptorSets.size(); ++i) descriptorSets[i]->Update();
-}
+//void Interface::Pipeline::UpdateDescriptorSets(uint32_t first){
+//	for(uint32_t i=first; i<descriptorSets.size(); ++i) descriptorSets[i]->Update();
+//}
 Interface::GraphicsPipeline::GraphicsPipeline(Interface &_vulkan, const GraphicsPipelineBlueprint &blueprint) : Pipeline(_vulkan, blueprint.pipelineBlueprint){
 	
 	// ----- Input assembly info -----

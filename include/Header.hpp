@@ -81,6 +81,8 @@
 
 namespace EVK {
 
-//
+template <typename T> T PositiveModulo(const T &lhs, const T &rhs){
+	return ((lhs % rhs) + rhs) % rhs;
+}
 
 } // namespace EVK

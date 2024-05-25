@@ -4,22 +4,58 @@
 
 namespace EVK {
 
-template <uint32_t binding, VkShaderStageFlags stageFlags>
+template <uint32_t binding, VkShaderStageFlags stageFlags, uint32_t count>
 class CombinedImageSamplersDescriptor : public DescriptorBase<binding, stageFlags> {
 public:
-	CombinedImageSamplersDescriptor(const std::vector<int> &_textureImageIndices, const std::vector<int> &_samplerIndices) : textureImageIndices(_textureImageIndices), samplerIndices(_samplerIndices) {
-		assert(_textureImageIndices.size() == _samplerIndices.size());
+	CombinedImageSamplersDescriptor() {}
+	
+	static consteval VkDescriptorSetLayoutBinding LayoutBinding() const override {
+		return (VkDescriptorSetLayoutBinding){
+			.binding = binding,
+			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			.descriptorCount = count,
+			.stageFlags = stageFlags,
+			.pImmutableSamplers = nullptr
+		};
 	}
 	
-	VkDescriptorSetLayoutBinding LayoutBinding() const override;
+	std::optional<VkWriteDescriptorSet> DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override {
+		for(Combo &combo : combos){
+			if(!combo.image || !combo.sampler){
+				return {};
+			}
+		}
+		const int startIndex = imageInfoBufferIndex;
+		for(Combo &combo : combos){
+			imageInfoBuffer[imageInfoBufferIndex].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			imageInfoBuffer[imageInfoBufferIndex].imageView = combo.image->View();
+			imageInfoBuffer[imageInfoBufferIndex].sampler = combo.sampler->Handle();
+			imageInfoBufferIndex++;
+		}
+		return (VkWriteDescriptorSet){
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = dstSet,
+			.dstBinding = binding,
+			.dstArrayElement = 0,
+			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			.descriptorCount = count,
+			.pImageInfo = &imageInfoBuffer[startIndex]
+		};
+	}
 	
-	VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
-	
-	VkDescriptorPoolSize PoolSize() const override;
+	static consteval VkDescriptorPoolSize PoolSize() const override {
+		return (VkDescriptorPoolSize){
+			.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			.descriptorCount = count
+		};
+	}
 	
 private:
-	std::vector<int> textureImageIndices;
-	std::vector<int> samplerIndices;
+	struct Combo {
+		std::shared_ptr<TextureImage> image;
+		std::shared_ptr<TextureSampler> sampler;
+	};
+	std::array<Combo, count> combos;
 };
 
 } // namespace EVK

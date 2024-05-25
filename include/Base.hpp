@@ -1,6 +1,4 @@
-#ifndef EVK_hpp
-#define EVK_hpp
-
+#pragma once
 
 #include <iostream>
 #include <assert.h>
@@ -9,9 +7,6 @@
 #include <functional>
 #include <set>
 #include <optional>
-
-
-
 
 namespace EVK {
 
@@ -24,64 +19,32 @@ class Devices;
 
 
 
-struct PNGImageBlueprint {
-	std::string imageFilename;
-	
-};
-struct DataImageBlueprint {
-	uint8_t *data;
-	uint32_t width;
-	uint32_t height;
-	uint32_t pitch;
-	VkFormat format;
-	bool mip;
-};
-struct Data3DImageBlueprint {
-	uint8_t *data;
-	uint32_t width;
-	uint32_t height;
-	uint32_t depth;
-	uint32_t pitch;
-	VkFormat format;
-};
-struct CubemapPNGImageBlueprint {
-	std::array<std::string, 6> imageFilenames;
-};
-struct ManualImageBlueprint {
-	VkImageCreateInfo imageCI; // is this safe? given that we pass these around
-	VkImageViewType imageViewType;
-	VkMemoryPropertyFlags properties;
-	VkImageAspectFlags aspectFlags;
-};
-
-
-
-enum class DescriptorType {
-	UBO,
-	SBO,
-	textureImage,
-	textureSampler,
-	combinedImageSampler,
-	storageImage
-};
-struct DescriptorBlueprint {
-	DescriptorType type;
-	uint32_t binding;
-	VkShaderStageFlags stageFlags;
-	std::vector<int> indicesExtra;
-	std::vector<int> indicesExtra2;
-	/*
-	 Usage of indicesExtra:
-	 - UBO: {ubo index}
-	 - SBO: {sbo index, flight offset}
-	 - textureImage: {textureImage indices...}
-	 - textureSampler: {textureSampler indices...}
-	 - combinedImageSampler: {textureImage indices...}
-	 - storageImage: {textureImage indices...}
-	 Usage of indicesExtra2:
-	 - combinedImageSampler: {textureSampler indices...}
-	 */
-};
+//enum class DescriptorType {
+//	UBO,
+//	SBO,
+//	textureImage,
+//	textureSampler,
+//	combinedImageSampler,
+//	storageImage
+//};
+//struct DescriptorBlueprint {
+//	DescriptorType type;
+//	uint32_t binding;
+//	VkShaderStageFlags stageFlags;
+//	std::vector<int> indicesExtra;
+//	std::vector<int> indicesExtra2;
+//	/*
+//	 Usage of indicesExtra:
+//	 - UBO: {ubo index}
+//	 - SBO: {sbo index, flight offset}
+//	 - textureImage: {textureImage indices...}
+//	 - textureSampler: {textureSampler indices...}
+//	 - combinedImageSampler: {textureImage indices...}
+//	 - storageImage: {textureImage indices...}
+//	 Usage of indicesExtra2:
+//	 - combinedImageSampler: {textureSampler indices...}
+//	 */
+//};
 
 
 using DescriptorSetBlueprint = std::vector<DescriptorBlueprint>;
@@ -110,28 +73,7 @@ struct ComputePipelineBlueprint {
 	
 	VkPipelineShaderStageCreateInfo shaderStageCI;
 };
-struct UniformBufferObjectBlueprint {
-	VkDeviceSize size;
-	std::optional<int> dynamicRepeats;
-};
-struct StorageBufferObjectBlueprint {
-	VkDeviceSize size;
-	VkBufferUsageFlags usages;
-	VkMemoryPropertyFlags memoryProperties;
-};
-struct BufferedRenderPassBlueprint {
-	VkRenderPassCreateInfo renderPassCI;
-	std::vector<int> targetTextureImageIndices;
-	bool resizeWithSwapChain;
-};
-struct LayeredBufferedRenderPassBlueprint {
-	VkRenderPassCreateInfo renderPassCI;
-	int targetTextureImageIndex;
-	uint32_t width, height;
-	int layersN;
-	VkFormat imageFormat;
-	VkImageAspectFlags imageAspectFlags;
-};
+
 struct InterfaceBlueprint {
 	// removing copy and move constructors and assignment operators so it's harder to use the blueprint in a different scope
 	InterfaceBlueprint(const Devices &_devices) : devices(_devices) {}
@@ -380,7 +322,4 @@ private:
 };
 
 
-} // namespace::EVK
-
-
-#endif /* EVK_hpp */
+} // namespace EVK

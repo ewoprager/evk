@@ -11,11 +11,8 @@
 
 #include "Header.hpp"
 
-namespace Static {
+namespace EVK {
 
-
-// Tools
-// -----
 // Type parameter pack
 template <typename... Ts> struct TypePack {
 	static constexpr bool empty = false;
@@ -68,72 +65,6 @@ constexpr bool IsMultipleOf(integralT num, integralT of){
 }
 
 template <typename T> consteval uint32_t AttributeSizeInShader(){ return RoundUp<uint32_t>(sizeof(T), 16) / 16; }
-
-
-
-template <uint32_t binding, VkShaderStageFlags stageFlags>
-struct UBODescriptor : public DescriptorBase<binding, stageFlags> {
-	int GetIndex() const { return index; }
-	void SetIndex(int newValue){ index = newValue; }
-	
-	Dynamic GetDynamic() const { return dynamic; }
-	void SetDynamic(const Dynamic &newValue){ dynamic = newValue; }
-	
-	struct Dynamic {
-		int repeatsN;
-		VkDeviceSize alignment;
-	};
-	
-	VkDescriptorSetLayoutBinding LayoutBinding() const override;
-	
-	VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
-	
-	VkDescriptorPoolSize PoolSize() const override;
-	
-private:
-	int index;
-	std::optional<Dynamic> dynamic;
-};
-
-template <uint32_t binding, VkShaderStageFlags stageFlags>
-struct SBODescriptor : public DescriptorBase<binding, stageFlags> {
-	int GetIndex() const { return index; }
-	void SetIndex(int newValue){ index = newValue; }
-	
-	int GetFlightOffset() const { return flightOffset; }
-	void SetFlightOffset(int newValue){ flightOffset = newValue; }
-	
-	VkDescriptorSetLayoutBinding LayoutBinding() const override;
-	
-	VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
-	
-	VkDescriptorPoolSize PoolSize() const override;
-	
-private:
-	int index;
-	int flightOffset;
-};
-
-
-template <uint32_t binding, VkShaderStageFlags stageFlags, >
-struct TextureImagesDescriptor : public DescriptorBase<binding, stageFlags> {
-	VkImage image;
-	VmaAllocation allocation;
-	VkImageView view;
-	uint32_t mipLevels;
-	ManualImageBlueprint blueprint;
-	
-	void CleanUp(const VkDevice &logicalDevice, const VmaAllocator &allocator){
-		vkDestroyImageView(logicalDevice, view, nullptr);
-		vmaDestroyImage(allocator, image, allocation);
-	}
-	
-	VkDescriptorSetLayoutBinding LayoutBinding() const override;
-	
-	VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
-	
-	VkDescriptorPoolSize PoolSize() const override;
-};
 
 //
 //
@@ -194,4 +125,5 @@ struct TextureImagesDescriptor : public DescriptorBase<binding, stageFlags> {
 //>>
 //shader;
 
-} // namespace Static
+} // namespace EVK
+

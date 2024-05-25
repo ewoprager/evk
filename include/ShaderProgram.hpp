@@ -37,21 +37,21 @@ template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags, typenam
 struct SBO : public UniformBase<set, binding, stageFlags> {
 	using descriptorType = SBODescriptor<binding, stageFlags>;
 };
-template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags>
+template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags, uint32_t count=1>
 struct TextureImages : public UniformBase<set, binding, stageFlags> {
-	using descriptorType = TextureImagesDescriptor<binding, stageFlags>;
+	using descriptorType = TextureImagesDescriptor<binding, stageFlags, count>;
 };
-template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags>
+template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags, uint32_t count=1>
 struct TextureSamplers : public UniformBase<set, binding, stageFlags> {
-	using descriptorType = TextureSamplersDescriptor<binding, stageFlags>;
+	using descriptorType = TextureSamplersDescriptor<binding, stageFlags, count>;
 };
-template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags>
+template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags, uint32_t count=1>
 struct CombinedImageSamplers : public UniformBase<set, binding, stageFlags> {
-	using descriptorType = CombinedImageSamplersDescriptor<binding, stageFlags>;
+	using descriptorType = CombinedImageSamplersDescriptor<binding, stageFlags, count>;
 };
-template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags>
+template <uint32_t set, uint32_t binding, VkShaderStageFlags stageFlags, uint32_t count=1>
 struct StorageImages : public UniformBase<set, binding, stageFlags> {
-	using descriptorType = StorageImagesDescriptor<binding, stageFlags>;
+	using descriptorType = StorageImagesDescriptor<binding, stageFlags, count>;
 };
 
 template <typename uniformT, typename... uniformTs> consteval bool UniformContains(){
@@ -123,26 +123,71 @@ struct DescriptorSet<TypePack<descriptorTs...>> {
 	
 	template <uint32_t index> using iDescriptor = IndexT<index, descriptorTs...>;
 	
-	DescriptorSet(Pipeline &_pipeline, int _index, const DescriptorSetBlueprint &blueprint);
+	DescriptorSet(std::shared_ptr<Devices> _devices, const DescriptorSetBlueprint &blueprint)
+	: devices(_devices) {}
 	~DescriptorSet(){}
 	
-	// For initialisation
-	void InitLayouts();
-	void Update();
+	VkDescriptorSetLayout CreateLayout() const {
+		constexpr std::array<VkDescriptorSetLayoutBinding, descriptorCount> layoutBindings = {(descriptorTs::LayoutBinding(), ...)};
+		// binding flags
+		std::array<VkDescriptorBindingFlags, descriptorCount> flags{};
+		std::ranges::fill(flags, VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT);
+		const VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlags{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+			.pNext = nullptr,
+			.pBindingFlags = flags.data(),
+			.bindingCount = descriptorCount
+		};
+		const VkDescriptorSetLayoutCreateInfo layoutInfo{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+			.pNext = &bindingFlags,
+			.bindingCount = descriptorCount,
+			.pBindings = layoutBindings.data()
+		};
+		VkDescriptorSetLayout handle;
+		if(vkCreateDescriptorSetLayout(devices->GetLogicalDevice(), &layoutInfo, nullptr, &handle) != VK_SUCCESS){
+			throw std::runtime_error("failed to create descriptor set layout!");
+		}
+		return handle;
+	}
 	
-	size_t GetDescriptorCount() const { return descriptors.size(); }
-	std::shared_ptr<Descriptor> GetDescriptor(int index) const { return descriptors[index]; }
-	bool GetUBODynamic() const { return uboDynamicAlignment.has_value(); }
-	const std::optional<VkDeviceSize> &GetUBODynamicAlignment() const { return uboDynamicAlignment; }
+	void Update(const std::function<VkDescriptorSet(uint32_t) &dstSetFromFlight){
+		VkDescriptorBufferInfo bufferInfos[32];
+		VkDescriptorImageInfo imageInfos[256];
+		int bufferInfoCounter, imageInfoCounter;
+		
+		// configuring descriptors in descriptor sets
+		for(int i=0; i<MAX_FRAMES_IN_FLIGHT; i++){
+			std::vector<VkWriteDescriptorSet> descriptorWrites{};
+			
+			bufferInfoCounter = 0;
+			imageInfoCounter = 0;
+			
+			[&]<uint32_t... indices>(std::index_sequence<indices...>){
+				([&](){
+					const std::optional<VkWriteDescriptorSet> maybeDescriptorWrite = std::get<indices>(descriptors).DescriptorWrite(dstSetFromFlight(i)/*pipeline.descriptorSetsFlying[pipeline.descriptorSets.size() * i + index]*/, imageInfos, imageInfoCounter, bufferInfos, bufferInfoCounter, i);
+					if(maybeDescriptorWrite){
+						descriptorWrites.push_back(maybeDescriptorWrite);
+					}
+				}(), ...);
+			}(std::make_integer_sequence<uint32_t, descriptorCount>{});
+			
+			vkUpdateDescriptorSets(devices->GetLogicalDevice(), uint32_t(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+		}
+	}
+	
+//	size_t GetDescriptorCount() const { return descriptors.size(); }
+//	std::shared_ptr<Descriptor> GetDescriptor(int index) const { return descriptors[index]; }
+//	bool GetUBODynamic() const { return uboDynamicAlignment.has_value(); }
+//	const std::optional<VkDeviceSize> &GetUBODynamicAlignment() const { return uboDynamicAlignment; }
 	
 private:
-	Pipeline &pipeline;
-	int index;
+	std::shared_ptr<Devices> devices;
 	
 	std::tuple<descriptorTs...> descriptors;
 	
 	// ubo info
-	std::optional<VkDeviceSize> uboDynamicAlignment;
+//	std::optional<VkDeviceSize> uboDynamicAlignment;
 	
 	// this still relevent? \/\/\/ -
 	/*
@@ -175,8 +220,24 @@ template <typename... uniformTs, template <uint32_t...> std::integer_sequence in
 	template <uint32_t index>
 	iDescriptorSet<index> &DescriptorSet(){ return std::get<index>(descriptorSets); }
 	
+	UniformsImpl(){
+		
+	}
+	
+	void UpdateDescriptorSets(){
+		[&]<uint32_t... indices>(std::index_sequence<indices...>){
+			(std::get<indices>(descriptorSets).Update([this](uint32_t flight) -> VkDescriptorSet {
+				return descriptorSetsFlying[descriptorSetCount * flight + indices];
+			}) , ...);
+		}(std::make_integer_sequence<uint32_t, descriptorSetCount>{});
+	}
+	
 private:
 	std::tuple<iDescriptorSet<indices>...> descriptorSets;
+	
+	std::array<VkDescriptorSetLayout, descriptorSetCount> descriptorSetLayouts;
+	std::array<VkDescriptorSet, MAX_FRAMES_IN_FLIGHT * descriptorSetCount> descriptorSetsFlying;
+	VkDescriptorPool descriptorPool;
 };
 
 template <typename... uniformTs> using Uniforms = UniformsImpl<TypePack<uniformTs...>, std::make_integer_sequence<uint32_t, DescriptorSetCount<uniformTs...>()>{}>;
@@ -238,10 +299,6 @@ protected:
 	Interface &vulkan;
 	
 	UniformsT uniforms;
-	
-	std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
-	std::vector<VkDescriptorSet> descriptorSetsFlying;
-	VkDescriptorPool descriptorPool;
 	
 	std::tuple<pushConstantTs...> pushConstants;
 	

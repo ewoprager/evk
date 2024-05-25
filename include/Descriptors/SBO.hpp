@@ -9,14 +9,45 @@ class SBODescriptor : public DescriptorBase<binding, stageFlags> {
 public:
 	SBODescriptor(int _index, int _flightOffset) : index(_index), flightOffset(_flightOffset) {}
 	
-	VkDescriptorSetLayoutBinding LayoutBinding() const override;
+	static consteval VkDescriptorSetLayoutBinding LayoutBinding() const override {
+		return (VkDescriptorSetLayoutBinding){
+			.binding = binding,
+			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			.descriptorCount = 1,
+			.stageFlags = stageFlags,
+			.pImmutableSamplers = nullptr
+		};
+	}
 	
-	VkWriteDescriptorSet DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override;
+	std::optional<VkWriteDescriptorSet> DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override {
+		if(!object){
+			return {};
+		}
+		
+		bufferInfoBuffer[bufferInfoBufferIndex].buffer = object->BufferFlying(PositiveModulo(flight + flightOffset, MAX_FRAMES_IN_FLIGHT));
+		bufferInfoBuffer[bufferInfoBufferIndex].offset = 0;
+		bufferInfoBuffer[bufferInfoBufferIndex].range = object->Size();
+		
+		return (VkWriteDescriptorSet){
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = dstSet,
+			.dstBinding = binding,
+			.dstArrayElement = 0,
+			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			.descriptorCount = 1,
+			.pBufferInfo = &bufferInfoBuffer[bufferInfoBufferIndex++]
+		};
+	}
 	
-	VkDescriptorPoolSize PoolSize() const override;
+	static consteval VkDescriptorPoolSize PoolSize() const override {
+		return (VkDescriptorPoolSize){
+			.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			.descriptorCount = 1
+		};
+	}
 	
 private:
-	int index;
+	std::shared_ptr<StorageBufferObject> object {};
 	int flightOffset;
 };
 
