@@ -60,15 +60,21 @@ private:
 
 class UniformBufferObject {
 public:
-	UniformBufferObject(std::shared_ptr<Devices> _devices, VkDeviceSize size);
+	UniformBufferObject(std::shared_ptr<Devices> _devices, VkDeviceSize _size, std::optional<Dynamic> _dynamic = std::optional<Dynamic>());
 	~UniformBufferObject(){
 		for(int i=0; i<MAX_FRAMES_IN_FLIGHT; i++){
 			vmaDestroyBuffer(devices->GetAllocator(), buffersFlying[i], allocationsFlying[i]);
 		}
 	}
 	
+	struct Dynamic {
+		int repeatsN;
+		VkDeviceSize alignment;
+	};
+	
 	VkBuffer BufferFlying(uint32_t flight) const { return buffersFlying[flight]; }
 	VkDeviceSize Size() const { return size; }
+	const std::optional<Dynamic> &GetDynamic() const { return dynamic; }
 	
 private:
 	std::shared_ptr<Devices> devices;
@@ -77,6 +83,8 @@ private:
 	VmaAllocation allocationsFlying[MAX_FRAMES_IN_FLIGHT];
 	VmaAllocationInfo allocationInfosFlying[MAX_FRAMES_IN_FLIGHT];
 	VkDeviceSize size;
+	
+	std::optional<Dynamic> dynamic;
 };
 
 class StorageBufferObject {
@@ -191,6 +199,7 @@ public:
 	}
 	
 	bool Valid() const { return targets.has_value(); }
+	VkRenderPass RenderPassHandle() const { return renderPass; }
 	
 	void SetImages(std::vector<std::shared_ptr<TextureImage>> images);
 	
@@ -235,6 +244,7 @@ public:
 	}
 	
 	bool Valid() const { return targets.has_value(); }
+	VkRenderPass RenderPassHandle() const { return renderPass; }
 	
 	void SetImage(std::shared_ptr<TextureImage> image){
 		// image must be 2D??

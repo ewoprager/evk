@@ -7,7 +7,7 @@ namespace EVK {
 template <uint32_t binding, VkShaderStageFlags stageFlags, uint32_t count>
 class CombinedImageSamplersDescriptor : public DescriptorBase<binding, stageFlags> {
 public:
-	CombinedImageSamplersDescriptor() {}
+	CombinedImageSamplersDescriptor() = default;
 	
 	static consteval VkDescriptorSetLayoutBinding LayoutBinding() const override {
 		return (VkDescriptorSetLayoutBinding){
@@ -46,7 +46,7 @@ public:
 	static consteval VkDescriptorPoolSize PoolSize() const override {
 		return (VkDescriptorPoolSize){
 			.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-			.descriptorCount = count
+			.descriptorCount = count * MAX_FRAMES_IN_FLIGHT
 		};
 	}
 	

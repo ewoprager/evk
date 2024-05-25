@@ -13,66 +13,9 @@ namespace EVK {
 class Interface;
 class Devices;
 
-
-
 //VkFormat SDLPixelFormatToVulkanFormat(const SDL_PixelFormatEnum &sdlPixelFormat);
 
 
-
-//enum class DescriptorType {
-//	UBO,
-//	SBO,
-//	textureImage,
-//	textureSampler,
-//	combinedImageSampler,
-//	storageImage
-//};
-//struct DescriptorBlueprint {
-//	DescriptorType type;
-//	uint32_t binding;
-//	VkShaderStageFlags stageFlags;
-//	std::vector<int> indicesExtra;
-//	std::vector<int> indicesExtra2;
-//	/*
-//	 Usage of indicesExtra:
-//	 - UBO: {ubo index}
-//	 - SBO: {sbo index, flight offset}
-//	 - textureImage: {textureImage indices...}
-//	 - textureSampler: {textureSampler indices...}
-//	 - combinedImageSampler: {textureImage indices...}
-//	 - storageImage: {textureImage indices...}
-//	 Usage of indicesExtra2:
-//	 - combinedImageSampler: {textureSampler indices...}
-//	 */
-//};
-
-
-using DescriptorSetBlueprint = std::vector<DescriptorBlueprint>;
-
-struct PipelineBlueprint {
-	std::vector<DescriptorSetBlueprint> descriptorSetBlueprints;
-	
-	std::vector<VkPushConstantRange> pushConstantRanges;
-};
-struct GraphicsPipelineBlueprint {
-	PipelineBlueprint pipelineBlueprint;
-	
-	std::vector<VkPipelineShaderStageCreateInfo> shaderStageCIs;
-	VkPipelineVertexInputStateCreateInfo vertexInputStateCI;
-	VkPrimitiveTopology primitiveTopology;
-	VkPipelineRasterizationStateCreateInfo rasterisationStateCI;
-	VkPipelineMultisampleStateCreateInfo multisampleStateCI;
-	VkPipelineColorBlendStateCreateInfo colourBlendStateCI;
-	VkPipelineDepthStencilStateCreateInfo depthStencilStateCI;
-	VkPipelineDynamicStateCreateInfo dynamicStateCI;
-	std::optional<int> bufferedRenderPassIndex;
-	std::optional<int> layeredBufferedRenderPassIndex;
-};
-struct ComputePipelineBlueprint {
-	PipelineBlueprint pipelineBlueprint;
-	
-	VkPipelineShaderStageCreateInfo shaderStageCI;
-};
 
 struct InterfaceBlueprint {
 	// removing copy and move constructors and assignment operators so it's harder to use the blueprint in a different scope

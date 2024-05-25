@@ -4,10 +4,10 @@
 
 namespace EVK {
 
-template <uint32_t binding, VkShaderStageFlags stageFlags>
+template <uint32_t binding, VkShaderStageFlags stageFlags, bool dynamic>
 class UBODescriptor : public DescriptorBase<binding, stageFlags> {
 public:
-	UBODescriptor(bool _dynamic) : dynamic(_dynamic) {}
+	UBODescriptor() = default;
 	
 	static consteval VkDescriptorSetLayoutBinding LayoutBinding() const override {
 		return (VkDescriptorSetLayoutBinding){
@@ -26,7 +26,7 @@ public:
 		
 		bufferInfoBuffer[bufferInfoBufferIndex].buffer = object->BufferFlying(flight);
 		bufferInfoBuffer[bufferInfoBufferIndex].offset = 0;
-		bufferInfoBuffer[bufferInfoBufferIndex].range = dynamic ? dynamic->alignment : object->Size();
+		bufferInfoBuffer[bufferInfoBufferIndex].range = dynamic ? object->GetDynamic()->alignment : object->Size();
 		
 		return (VkWriteDescriptorSet){
 			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -42,12 +42,11 @@ public:
 	static consteval VkDescriptorPoolSize PoolSize() const override {
 		return (VkDescriptorPoolSize){
 			.type = dynamic ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-			.descriptorCount = 1
+			.descriptorCount = 1 * MAX_FRAMES_IN_FLIGHT
 		};
 	}
 	
 private:
-	bool dynamic;
 	std::shared_ptr<UniformBufferObject> object {};
 };
 

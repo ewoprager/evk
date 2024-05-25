@@ -766,14 +766,14 @@ void Interface::CmdBeginLayeredBufferedRenderPass(int layeredBufferedRenderPassI
 	vkCmdSetScissor(commandBuffersFlying[currentFrame], 0, 1, &scissor);
 }
 
-void Interface::BuildGraphicsPipeline(int index, const GraphicsPipelineBlueprint &blueprint){
-	if(graphicsPipelines[index]) graphicsPipelines[index].reset();
-	graphicsPipelines[index] = std::make_shared<GraphicsPipeline>(*this, blueprint);
-}
-void Interface::BuildComputePipeline(int index, const ComputePipelineBlueprint &blueprint){
-	if(computePipelines[index]) computePipelines[index].reset();
-	computePipelines[index] = std::make_shared<ComputePipeline>(*this, blueprint);
-}
+//void Interface::BuildGraphicsPipeline(int index, const GraphicsPipelineBlueprint &blueprint){
+//	if(graphicsPipelines[index]) graphicsPipelines[index].reset();
+//	graphicsPipelines[index] = std::make_shared<GraphicsPipeline>(*this, blueprint);
+//}
+//void Interface::BuildComputePipeline(int index, const ComputePipelineBlueprint &blueprint){
+//	if(computePipelines[index]) computePipelines[index].reset();
+//	computePipelines[index] = std::make_shared<ComputePipeline>(*this, blueprint);
+//}
 
 /*
  // VK_FORMAT_R8G8B8_SRGB and the other 24 bit-depth formats don't seem to work.

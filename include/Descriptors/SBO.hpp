@@ -7,7 +7,7 @@ namespace EVK {
 template <uint32_t binding, VkShaderStageFlags stageFlags>
 class SBODescriptor : public DescriptorBase<binding, stageFlags> {
 public:
-	SBODescriptor(int _index, int _flightOffset) : index(_index), flightOffset(_flightOffset) {}
+	SBODescriptor() = default;
 	
 	static consteval VkDescriptorSetLayoutBinding LayoutBinding() const override {
 		return (VkDescriptorSetLayoutBinding){
@@ -42,7 +42,7 @@ public:
 	static consteval VkDescriptorPoolSize PoolSize() const override {
 		return (VkDescriptorPoolSize){
 			.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-			.descriptorCount = 1
+			.descriptorCount = 1 * MAX_FRAMES_IN_FLIGHT
 		};
 	}
 	

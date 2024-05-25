@@ -7,7 +7,7 @@ namespace EVK {
 template <uint32_t binding, VkShaderStageFlags stageFlags, uint32_t imageCount>
 class TextureImagesDescriptor : public DescriptorBase<binding, stageFlags> {
 public:
-	TextureImagesDescriptor() {}
+	TextureImagesDescriptor() = default;
 	
 	static consteval VkDescriptorSetLayoutBinding LayoutBinding() const override {
 		return (VkDescriptorSetLayoutBinding){
@@ -46,7 +46,7 @@ public:
 	static consteval VkDescriptorPoolSize PoolSize() const override {
 		return (VkDescriptorPoolSize){
 			.type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-			.descriptorCount = imageCount
+			.descriptorCount = imageCount * MAX_FRAMES_IN_FLIGHT
 		};
 	}
 	

@@ -52,8 +52,8 @@ void IndexBufferObject::CleanUpContents(){
 	contents.reset();
 }
 
-UniformBufferObject::UniformBufferObject(std::shared_ptr<Devices> _devices, VkDeviceSize _size)
-: devices(std::move(_devices)), size(std::move(_size)) {
+UniformBufferObject::UniformBufferObject(std::shared_ptr<Devices> _devices, VkDeviceSize _size, std::optional<Dynamic> _dynamic = std::optional<Dynamic>())
+: devices(std::move(_devices)), size(std::move(_size)), dynamic(std::move(_dynamic)) {
 	for(size_t i=0; i<MAX_FRAMES_IN_FLIGHT; ++i){
 		// creating buffer
 		devices->CreateBuffer(size,
