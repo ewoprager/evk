@@ -35,6 +35,7 @@ concept pushConstants_c = requires {
 template <VkShaderStageFlags stageFlags, typename T> struct WithShaderStage {
 	static constexpr VkShaderStageFlags stageFlagsValue = stageFlags;
 	using type = T;
+	static constexpr VkPushConstantRange rangeValue = {};
 };
 template <VkShaderStageFlags stageFlags, size_t offset, typename T>
 struct WithShaderStage<stageFlags, PushConstants<offset, T>> {
@@ -79,7 +80,7 @@ requires (oneWithShaderStageMergedIntoMerged_c<OneWithShaderStageMergedIntoMerge
 using oneWithShaderStageMergedIntoMerged_t = typename OneWithShaderStageMergedIntoMerged<TypePack<>, withShaderStageT, mergedTP>::packType;
 
 // merge all of a pack of WithShaderStages together
-template <typename mergedTP, typename unmergedTP> struct WithShaderStagesMerged {};
+template <typename mergedTP, typename unmergedTP> struct WithShaderStagesMerged;
 template <typename... mergedTs> struct WithShaderStagesMerged<TypePack<mergedTs...>, TypePack<>> {
 	using packType = TypePack<mergedTs...>;
 };
@@ -224,7 +225,7 @@ static consteval bool AllSmallerSetsExistInUniforms(){
 template <VkVertexInputBindingDescription... bindingDescriptions> struct BindingDescriptionPack {};
 template <VkVertexInputAttributeDescription... attributeDescriptions> struct AttributeDescriptionPack {};
 
-template <typename attributeTP, typename bindingDescriptionP, typename attributeDescriptionP> struct Attributes {};
+template <typename attributeTP, typename bindingDescriptionP, typename attributeDescriptionP> struct Attributes;
 template <typename... attributeTs, VkVertexInputBindingDescription... bindingDescriptions, VkVertexInputAttributeDescription... attributeDescriptions>
 struct Attributes<TypePack<attributeTs...>, BindingDescriptionPack<bindingDescriptions...>, AttributeDescriptionPack<attributeDescriptions...>> {
 	
@@ -257,7 +258,17 @@ struct Attributes<TypePack<attributeTs...>, BindingDescriptionPack<bindingDescri
 
 // Descriptor set
 // -----
-template <typename descriptor_tp> struct DescriptorSet {};
+template <typename descriptor_tp> struct DescriptorSet 
+//{
+//	explicit DescriptorSet(std::shared_ptr<Devices> _devices) {
+//		throw std::runtime_error("Non-specialised template struct used.\n");
+//	}
+//	VkDescriptorSetLayout CreateLayout() {
+//		throw std::runtime_error("Non-specialised template struct used.\n");
+//		return {};
+//	}
+//}
+;
 template <typename... descriptor_ts>
 requires ((descriptor_c<descriptor_ts> && ...))
 struct DescriptorSet<TypePack<descriptor_ts...>> {
@@ -363,7 +374,7 @@ private:
 
 // Uniforms
 // -----
-template <typename uniformWithShaderStages_tp, typename indexSequence_t> struct UniformsImpl {};
+template <typename uniformWithShaderStages_tp, typename indexSequence_t> struct UniformsImpl;
 template <typename... uniformWithShaderStage_ts, uint32_t... indices>
 requires ((uniformWithShaderStage_c<uniformWithShaderStage_ts> && ...))
 struct UniformsImpl<TypePack<uniformWithShaderStage_ts...>, std::integer_sequence<uint32_t, indices...>> {
@@ -419,7 +430,7 @@ struct UniformsImpl<TypePack<uniformWithShaderStage_ts...>, std::integer_sequenc
 			.descriptorSetCount = descriptorSetCount * MAX_FRAMES_IN_FLIGHT,
 			.pSetLayouts = flyingLayouts
 		};
-		if(vkAllocateDescriptorSets(devices->GetLogicalDevice(), &allocInfo, descriptorSetsFlying.data()) != VK_SUCCESS){
+		if(vkAllocateDescriptorSets(_devices->GetLogicalDevice(), &allocInfo, descriptorSetsFlying.data()) != VK_SUCCESS){
 			throw std::runtime_error("failed to allocate descriptor sets!");
 		}
 	}
@@ -485,7 +496,7 @@ private:
 	}
 };
 
-template <typename uniformWithShaderStage_tp> struct UniformsStruct {};
+template <typename uniformWithShaderStage_tp> struct UniformsStruct;
 template <typename... uniformWithShaderStage_ts> struct UniformsStruct<TypePack<uniformWithShaderStage_ts...>> {
 	using type = UniformsImpl<TypePack<uniformWithShaderStage_ts...>, std::make_integer_sequence<uint32_t, DescriptorSetCount<uniformWithShaderStage_ts...>()>>;
 };
@@ -532,16 +543,14 @@ concept vertexShader_c = requires (T val) {
 // Pipeline
 // -----
 template <typename pushConstantWithShaderStages_tp, typename uniforms_t>
-struct PipelineBase {};
+class PipelineBase;
 
 template <typename... pushConstantWithShaderStage_ts, typename uniforms_t>
-struct PipelineBase<TypePack<pushConstantWithShaderStage_ts...>, uniforms_t> {
-	
+class PipelineBase<TypePack<pushConstantWithShaderStage_ts...>, uniforms_t> {
+public:
 	static constexpr uint32_t pushConstantCount = sizeof...(pushConstantWithShaderStage_ts);
 	
-	static constexpr std::array<VkPushConstantRange, pushConstantCount> pushConstantRanges = {{
-		(pushConstantWithShaderStage_ts::rangeValue, ...)
-	}};
+	static constexpr std::array<VkPushConstantRange, pushConstantCount> pushConstantRanges = {{pushConstantWithShaderStage_ts::rangeValue...}};
 	
 	PipelineBase(std::shared_ptr<Devices> _devices)
 	: devices(_devices), uniforms(_devices) {
@@ -553,7 +562,7 @@ struct PipelineBase<TypePack<pushConstantWithShaderStage_ts...>, uniforms_t> {
 			.pushConstantRangeCount = pushConstantCount,
 			.pPushConstantRanges = pushConstantCount == 0 ? nullptr : pushConstantRanges.data()
 		};
-		if(vkCreatePipelineLayout(devices->GetLogicalDevice(), &pipelineLayoutInfo, nullptr, &layout) != VK_SUCCESS){
+		if(vkCreatePipelineLayout(_devices->GetLogicalDevice(), &pipelineLayoutInfo, nullptr, &layout) != VK_SUCCESS){
 			throw std::runtime_error("Failed to create pipeline layout!");
 		}
 	}
@@ -626,74 +635,81 @@ struct RenderPipelineBlueprint {
 	VkRenderPass renderPassHandle;
 };
 
-template <typename vertexShader_t, typename fragmentShader_t>
-requires (vertexShader_c<vertexShader_t> && shader_c<fragmentShader_t>)
-using renderPipelineBase_t = PipelineBase<
-withShaderStagesMerged_t<concatenatedPack_t<typename vertexShader_t::pushConstantWithShaderStage_tp, typename fragmentShader_t::pushConstantWithShaderStage_tp>>,
-Uniforms<withShaderStagesMerged_t<concatenatedPack_t<typename vertexShader_t::uniformWithShaderStage_tp, typename fragmentShader_t::uniformWithShaderStage_tp>>>
->;
+//template <typename vertexShader_t, typename fragmentShader_t>
+//requires (vertexShader_c<vertexShader_t> && shader_c<fragmentShader_t>)
+//using renderPipelineBase_t = PipelineBase<
+//withShaderStagesMerged_t<concatenatedPack_t<typename vertexShader_t::pushConstantWithShaderStage_tp, typename fragmentShader_t::pushConstantWithShaderStage_tp>>,
+//Uniforms<withShaderStagesMerged_t<concatenatedPack_t<typename vertexShader_t::uniformWithShaderStage_tp, typename fragmentShader_t::uniformWithShaderStage_tp>>>
+//>;
 
 template <typename vertexShader_t, typename fragmentShader_t>
 requires (vertexShader_c<vertexShader_t> && shader_c<fragmentShader_t>)
-struct RenderPipeline : public renderPipelineBase_t<vertexShader_t, fragmentShader_t> {
-	using base_t = renderPipelineBase_t<vertexShader_t, fragmentShader_t>;
+class RenderPipeline : public 
+PipelineBase<
+	withShaderStagesMerged_t<concatenatedPack_t<typename vertexShader_t::pushConstantWithShaderStage_tp, typename fragmentShader_t::pushConstantWithShaderStage_tp>>,
+	Uniforms<withShaderStagesMerged_t<concatenatedPack_t<typename vertexShader_t::uniformWithShaderStage_tp, typename fragmentShader_t::uniformWithShaderStage_tp>>>
+>
+{
+public:
+	using PipelineBase = typename RenderPipeline::PipelineBase;
 	
 	RenderPipeline(std::shared_ptr<Devices> _devices, const RenderPipelineBlueprint &blueprint)
-	: base_t(_devices) {
-		// ----- Input assembly info -----
-		const VkPipelineInputAssemblyStateCreateInfo inputAssembly {
-			.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-			.topology = blueprint.primitiveTopology,
-			.primitiveRestartEnable = VK_FALSE
-		};
-		// ----- Viewport state -----
-		const VkPipelineViewportStateCreateInfo viewportState {
-			.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-			.viewportCount = 1,
-			.scissorCount = 1
-		};
-		// Shader stages
-		const VkPipelineShaderStageCreateInfo stageCIs[2] = {
-			{// vertex shader
-				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-				.stage = VK_SHADER_STAGE_VERTEX_BIT,
-				.pName = "main",
-				.module = base_t::devices->CreateShaderModule(vertexShader_t::filenameValue.data()),
-				// this is for constants to use in the shader:
-				.pSpecializationInfo = nullptr
-			},
-			{// fragment shader
-				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-				.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-				.pName = "main",
-				.module = base_t::devices->CreateShaderModule(fragmentShader_t::filenameValue.data()),
-				// this is for constants to use in the shader:
-				.pSpecializationInfo = nullptr
-			}
-		};
-		// Pipeline
-		const VkGraphicsPipelineCreateInfo pipelineInfo{
-			.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-			.stageCount = 2,
-			.pStages = stageCIs,
-			.pVertexInputState = &vertexShader_t::pipelineVertexInputStateCI,
-			.pInputAssemblyState = &inputAssembly,
-			.pViewportState = &viewportState,
-			.pRasterizationState = &blueprint.rasterisationStateCI,
-			.pMultisampleState = &blueprint.multisampleStateCI,
-			.pDepthStencilState = &blueprint.depthStencilStateCI, // Optional
-			.pColorBlendState = &blueprint.colourBlendStateCI,
-			.pDynamicState = &blueprint.dynamicStateCI,
-			.layout = base_t::layout,
-			.renderPass = blueprint.renderPassHandle,
-			.subpass = 0,
-			.basePipelineHandle = VK_NULL_HANDLE, // Optional
-			.basePipelineIndex = -1 // Optional
-		};
-		if(vkCreateGraphicsPipelines(base_t::devices->GetLogicalDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &base_t::pipeline) != VK_SUCCESS){
-			throw std::runtime_error("failed to create graphics pipeline!");
-		}
-	}
+	: PipelineBase(_devices) {
+		 // ----- Input assembly info -----
+		 const VkPipelineInputAssemblyStateCreateInfo inputAssembly {
+			 .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+			 .topology = blueprint.primitiveTopology,
+			 .primitiveRestartEnable = VK_FALSE
+		 };
+		 // ----- Viewport state -----
+		 const VkPipelineViewportStateCreateInfo viewportState {
+			 .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+			 .viewportCount = 1,
+			 .scissorCount = 1
+		 };
+		 // Shader stages
+		 const VkPipelineShaderStageCreateInfo stageCIs[2] = {
+			 {// vertex shader
+				 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+				 .stage = VK_SHADER_STAGE_VERTEX_BIT,
+				 .pName = "main",
+				 .module = PipelineBase::devices->CreateShaderModule(vertexShader_t::filenameValue.data()),
+				 // this is for constants to use in the shader:
+				 .pSpecializationInfo = nullptr
+			 },
+			 {// fragment shader
+				 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+				 .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+				 .pName = "main",
+				 .module = PipelineBase::devices->CreateShaderModule(fragmentShader_t::filenameValue.data()),
+				 // this is for constants to use in the shader:
+				 .pSpecializationInfo = nullptr
+			 }
+		 };
+		 // Pipeline
+		 const VkGraphicsPipelineCreateInfo pipelineInfo{
+			 .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+			 .stageCount = 2,
+			 .pStages = stageCIs,
+			 .pVertexInputState = &vertexShader_t::pipelineVertexInputStateCI,
+			 .pInputAssemblyState = &inputAssembly,
+			 .pViewportState = &viewportState,
+			 .pRasterizationState = &blueprint.rasterisationStateCI,
+			 .pMultisampleState = &blueprint.multisampleStateCI,
+			 .pDepthStencilState = &blueprint.depthStencilStateCI, // Optional
+			 .pColorBlendState = &blueprint.colourBlendStateCI,
+			 .pDynamicState = &blueprint.dynamicStateCI,
+			 .layout = PipelineBase::layout,
+			 .renderPass = blueprint.renderPassHandle,
+			 .subpass = 0,
+			 .basePipelineHandle = VK_NULL_HANDLE, // Optional
+			 .basePipelineIndex = -1 // Optional
+		 };
+		 if(vkCreateGraphicsPipelines(PipelineBase::devices->GetLogicalDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &(PipelineBase::pipeline)) != VK_SUCCESS){
+			 throw std::runtime_error("failed to create graphics pipeline!");
+		 }
+	 }
+	
 	~RenderPipeline(){
 //		vkDestroyShaderModule(devices->GetLogicalDevice(), fragShaderModule, nullptr);
 //		vkDestroyShaderModule(devices->GetLogicalDevice(), vertShaderModule, nullptr);
@@ -713,18 +729,19 @@ Uniforms<typename computeShader_t::uniforms_tp>
 
 template <typename computeShader_t>
 requires(shader_c<computeShader_t>)
-struct ComputePipeline : public computePipelineBase_t<computeShader_t> {
-	using base_t = computePipelineBase_t<computeShader_t>;
+class ComputePipeline : public computePipelineBase_t<computeShader_t> {
+public:
+	using PipelineBase = typename ComputePipeline::PipelineBase;
 	
 	ComputePipeline(std::shared_ptr<Devices> _devices)
-	: base_t(_devices) {
+	: PipelineBase(_devices) {
 		
 		// Shader stage
 		const VkPipelineShaderStageCreateInfo stageCI = {
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 			.stage = VK_SHADER_STAGE_COMPUTE_BIT,
 			.pName = "main",
-			.module = base_t::devices->CreateShaderModule(computeShader_t::filename),
+			.module = PipelineBase::devices->CreateShaderModule(computeShader_t::filename),
 			// this is for constants to use in the shader:
 			.pSpecializationInfo = nullptr
 		};
@@ -732,9 +749,9 @@ struct ComputePipeline : public computePipelineBase_t<computeShader_t> {
 		VkComputePipelineCreateInfo pipelineInfo{
 			.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
 			.stage = stageCI,
-			.layout = base_t::layout
+			.layout = PipelineBase::layout
 		};
-		if(vkCreateComputePipelines(base_t::devices->GetLogicalDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &base_t::pipeline) != VK_SUCCESS){
+		if(vkCreateComputePipelines(PipelineBase::devices->GetLogicalDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &(PipelineBase::pipeline)) != VK_SUCCESS){
 			throw std::runtime_error("Failed to create compute pipeline!");
 		}
 	}

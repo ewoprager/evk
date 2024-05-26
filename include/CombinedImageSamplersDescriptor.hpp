@@ -7,6 +7,8 @@ namespace EVK {
 template <uint32_t binding, VkShaderStageFlags stageFlags, uint32_t count>
 class CombinedImageSamplersDescriptor : public DescriptorBase<binding, stageFlags> {
 public:
+	using DescriptorBase = typename CombinedImageSamplersDescriptor::DescriptorBase;
+	
 	CombinedImageSamplersDescriptor() = default;
 	
 	struct Combo {
@@ -16,7 +18,7 @@ public:
 	
 	void Set(std::array<Combo, count> value){
 		combos = std::move(value);
-		DescriptorBase<binding, stageFlags>::valid = false;
+		DescriptorBase::valid = false;
 	}
 	
 	static constexpr VkDescriptorSetLayoutBinding layoutBinding = {

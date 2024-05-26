@@ -7,11 +7,13 @@ namespace EVK {
 template <uint32_t binding, VkShaderStageFlags stageFlags, uint32_t imageCount>
 class StorageImagesDescriptor : public DescriptorBase<binding, stageFlags> {
 public:
+	using DescriptorBase = typename StorageImagesDescriptor::DescriptorBase;
+	
 	StorageImagesDescriptor() = default;
 	
 	void Set(std::array<std::shared_ptr<TextureImage>, imageCount> value){
 		images = std::move(value);
-		DescriptorBase<binding, stageFlags>::valid = false;
+		DescriptorBase::valid = false;
 	}
 	
 	static constexpr VkDescriptorSetLayoutBinding layoutBinding = {

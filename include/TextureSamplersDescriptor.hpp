@@ -7,11 +7,13 @@ namespace EVK {
 template <uint32_t binding, VkShaderStageFlags stageFlags, uint32_t samplerCount>
 class TextureSamplersDescriptor : public DescriptorBase<binding, stageFlags> {
 public:
+	using DescriptorBase = typename TextureSamplersDescriptor::DescriptorBase;
+	
 	TextureSamplersDescriptor() = default;
 	
 	void Set(std::array<std::shared_ptr<TextureSampler>, samplerCount> value){
 		samplers = std::move(value);
-		DescriptorBase<binding, stageFlags>::valid = false;
+		DescriptorBase::valid = false;
 	}
 	
 	static constexpr VkDescriptorSetLayoutBinding layoutBinding = {

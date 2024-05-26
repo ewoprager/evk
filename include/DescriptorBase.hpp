@@ -7,7 +7,8 @@
 namespace EVK {
 
 template <uint32_t binding, VkShaderStageFlags stageFlags>
-struct DescriptorBase {
+class DescriptorBase {
+public:
 	static constexpr uint32_t bindingValue = binding;
 	static constexpr VkShaderStageFlags stageFlagsValue = stageFlags;
 	

@@ -7,11 +7,13 @@ namespace EVK {
 template <uint32_t binding, VkShaderStageFlags stageFlags, bool dynamic>
 class UBODescriptor : public DescriptorBase<binding, stageFlags> {
 public:
+	using DescriptorBase = typename UBODescriptor::DescriptorBase;
+	
 	UBODescriptor() = default;
 	
 	void Set(std::shared_ptr<UniformBufferObject> value){
 		object = std::move(value);
-		DescriptorBase<binding, stageFlags>::valid = false;
+		DescriptorBase::valid = false;
 	}
 	
 	static constexpr VkDescriptorSetLayoutBinding layoutBinding  = {
