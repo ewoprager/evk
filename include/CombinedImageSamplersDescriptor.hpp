@@ -30,13 +30,13 @@ public:
 	};
 	
 	std::optional<VkWriteDescriptorSet> DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override {
-		for(Combo &combo : combos){
+		for(const Combo &combo : combos){
 			if(!combo.image || !combo.sampler){
 				return {};
 			}
 		}
 		const int startIndex = imageInfoBufferIndex;
-		for(Combo &combo : combos){
+		for(const Combo &combo : combos){
 			imageInfoBuffer[imageInfoBufferIndex].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 			imageInfoBuffer[imageInfoBufferIndex].imageView = combo.image->View();
 			imageInfoBuffer[imageInfoBufferIndex].sampler = combo.sampler->Handle();

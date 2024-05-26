@@ -10,6 +10,11 @@
 
 static constexpr uint32_t PNGS_N = 3;
 
+struct Vertex {
+	vec<2, float32_t> position;
+	vec<3, float32_t> colour;
+};
+
 namespace MainInstancedPipeline {
 
 namespace VertexShader {
@@ -18,70 +23,33 @@ namespace VertexShader {
 //constexpr std::string Filename::string = "Hello";
 //static_assert(EVK::filenameString_c<Filename>);
 
-static constexpr char ch1[] = "somestrnig";
+static constexpr char vertexFilename[] = "../Shaders/vert.spv";
 
-struct PushConstantType {
-	int placeHolder;
-};
+//struct PushConstantType {
+//	int placeHolder;
+//};
 
-using PCS = EVK::PushConstants<0, PushConstantType>;
-static_assert(EVK::pushConstants_c<PCS>);
+//using PCS = EVK::PushConstants<0, PushConstantType>;
+//static_assert(EVK::pushConstants_c<PCS>);
 
-using Attributes = EVK::Attributes<EVK::TypePack<
-vec<3>,
-vec<3>,
-vec<2>,
-mat<4, 4>,
-mat<4, 4>
->, EVK::BindingDescriptionPack<
+using Attributes = EVK::Attributes<EVK::BindingDescriptionPack<
 VkVertexInputBindingDescription{
 	0, // binding
-	32,//sizeof(Vertex), // stride
+	20, // stride
 	VK_VERTEX_INPUT_RATE_VERTEX // input rate
-},
-VkVertexInputBindingDescription{
-	1, // binding
-	128,//sizeof(Vertex), // stride
-	VK_VERTEX_INPUT_RATE_INSTANCE // input rate
 }
 >, EVK::AttributeDescriptionPack<
 VkVertexInputAttributeDescription{
-	0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0//offsetof(Vertex, position)
+	0, 0, VK_FORMAT_R32G32_SFLOAT, 0
 },
 VkVertexInputAttributeDescription{
-	1, 0, VK_FORMAT_R32G32B32_SFLOAT, 12//offsetof(Vertex, normal)
-},
-VkVertexInputAttributeDescription{
-	2, 0, VK_FORMAT_R32G32_SFLOAT, 24//offsetof(Vertex, texCoord)
-},
-VkVertexInputAttributeDescription{
-	3, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 0//offsetof(Vertex, position)
-},
-VkVertexInputAttributeDescription{
-	4, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 16//offsetof(Vertex, position)
-},
-VkVertexInputAttributeDescription{
-	5, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 32//offsetof(Vertex, position)
-},
-VkVertexInputAttributeDescription{
-	6, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 48//offsetof(Vertex, position)
-},
-VkVertexInputAttributeDescription{
-	7, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 64//offsetof(Vertex, normal)
-},
-VkVertexInputAttributeDescription{
-	8, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 80//offsetof(Vertex, normal)
-},
-VkVertexInputAttributeDescription{
-	9, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 96//offsetof(Vertex, normal)
-},
-VkVertexInputAttributeDescription{
-	10, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 112//offsetof(Vertex, normal)
+	1, 0, VK_FORMAT_R32G32B32_SFLOAT, 8
 }
->>;
+>
+>;
 
-using type = EVK::VertexShader<ch1, PCS, Attributes,
-EVK::UBOUniform<0, 0, false>
+using type = EVK::VertexShader<vertexFilename, EVK::NoPushConstants, Attributes
+//, EVK::UBOUniform<0, 0, false>
 >;
 
 static_assert(EVK::vertexShader_c<type>);
@@ -95,26 +63,27 @@ namespace FragmentShader {
 //static_assert(EVK::filenameString_c<Filename>);
 
 
-static constexpr char ch1[] = "somestrnig";
+static constexpr char fragmentFilename[] = "../Shaders/frag.spv";
 
-struct PushConstantType {
-	vec<4, float32_t> colourMult;
-	vec<4, float32_t> specular;
-	float32_t shininess;
-	float32_t specularFactor;
-	int32_t textureID;
-};
+//struct PushConstantType {
+//	vec<4, float32_t> colourMult;
+//	vec<4, float32_t> specular;
+//	float32_t shininess;
+//	float32_t specularFactor;
+//	int32_t textureID;
+//};
 
-using PCS = EVK::PushConstants<16, PushConstantType>;
-static_assert(EVK::pushConstants_c<PCS>);
+//using PCS = EVK::PushConstants<16, PushConstantType>;
+//static_assert(EVK::pushConstants_c<PCS>);
 
-static_assert(EVK::pushConstantWithShaderStage_c<EVK::WithShaderStage<VK_SHADER_STAGE_FRAGMENT_BIT, PCS>>);
+//static_assert(EVK::pushConstantWithShaderStage_c<EVK::WithShaderStage<VK_SHADER_STAGE_FRAGMENT_BIT, PCS>>);
 
-using type = EVK::Shader<VK_SHADER_STAGE_FRAGMENT_BIT, ch1, PCS,
-EVK::UBOUniform<0, 0, false>,
-EVK::TextureSamplersUniform<0, 1, 1>,
-EVK::TextureImagesUniform<0, 2, PNGS_N>,
-EVK::CombinedImageSamplersUniform<0, 3, 1>
+using type = EVK::Shader<VK_SHADER_STAGE_FRAGMENT_BIT, fragmentFilename, EVK::NoPushConstants
+//,
+//EVK::UBOUniform<0, 0, false>,
+//EVK::TextureSamplersUniform<0, 1, 1>,
+//EVK::TextureImagesUniform<0, 2, PNGS_N>,
+//EVK::CombinedImageSamplersUniform<0, 3, 1>
 >;
 static_assert(EVK::shader_c<type>);
 
@@ -219,7 +188,7 @@ EVK::RenderPipelineBlueprint Blueprint(VkRenderPass renderPassHandle){
 	//dynamicState.dynamicStateCount = 2;
 	dynamicState.pDynamicStates = dynamicStates;
 	
-	rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+	rasterizer.cullMode = VK_CULL_MODE_NONE;//VK_CULL_MODE_BACK_BIT;
 	rasterizer.depthBiasEnable = VK_FALSE;
 	colourBlending.attachmentCount = 1;
 	depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
@@ -243,23 +212,11 @@ EVK::RenderPipelineBlueprint Blueprint(VkRenderPass renderPassHandle){
 
 } // namespace MainInstancedPipeline
 
-using uniforms_t =
-EVK::UniformsImpl<
-EVK::TypePack<
-	EVK::WithShaderStage<17, EVK::UBOUniform<0, 0>>,
-	EVK::WithShaderStage<16, EVK::TextureSamplersUniform<0, 1>>,
-	EVK::WithShaderStage<16, EVK::TextureImagesUniform<0, 2, 3>>,
-	EVK::WithShaderStage<16, EVK::CombinedImageSamplersUniform<0, 3>>
->,
-std::integer_sequence<unsigned int, 0>
->;
-using pushConstantWithShaderStages_tp =
-EVK::TypePack<
-	EVK::WithShaderStage<1, EVK::PushConstants<0, MainInstancedPipeline::VertexShader::PushConstantType>>,
-	EVK::WithShaderStage<16, EVK::PushConstants<16, MainInstancedPipeline::FragmentShader::PushConstantType>>
->;
-static_assert(EVK::pushConstantWithShaderStage_c<EVK::WithShaderStage<1, EVK::PushConstants<0, MainInstancedPipeline::VertexShader::PushConstantType>>>);
-static_assert(EVK::pushConstantWithShaderStage_c<EVK::WithShaderStage<16, EVK::PushConstants<16, MainInstancedPipeline::FragmentShader::PushConstantType>>>);
+const std::array<Vertex, 3> vertices = {{
+	{{ 0.0f, 0.5f}, {1.0f, 0.0f, 0.0f}},
+	{{ 0.5f,-0.5f}, {0.0f, 1.0f, 0.0f}},
+	{{-0.5f,-0.5f}, {0.0f, 0.0f, 1.0f}}
+}};
 
 int main(int argc, char *argv[]){
 	std::cout << "Hello, World!\n";
@@ -294,6 +251,10 @@ int main(int argc, char *argv[]){
 	
 	std::shared_ptr<MainInstancedPipeline::type> mainInstancedPipeline = std::make_shared<MainInstancedPipeline::type>(devices, MainInstancedPipeline::Blueprint(interface->GetRenderPassHandle()));
 	
+	std::shared_ptr<EVK::VertexBufferObject> vbo = std::make_shared<EVK::VertexBufferObject>(devices);
+	
+	vbo->Fill((void *)(vertices.data()), sizeof(vertices), 0);
+	
 	int time = SDL_GetTicks();
 	
 	while(!ESDL::HandleEvents()){
@@ -301,7 +262,18 @@ int main(int argc, char *argv[]){
 		const float dT = 0.001f*(float)(newTime - time);
 		time = newTime;
 		
-		
+		if(std::optional<VkCommandBuffer> cb = interface->BeginFrame(); cb){
+			interface->BeginFinalRenderPass({{1.0f, 1.0f, 1.0f, 1.0f}});
+			
+			mainInstancedPipeline->CmdBind(cb.value());
+			if(vbo->CmdBind(cb.value(), 0)){
+				interface->CmdDraw(3);
+			} else {
+				std::cout << "Failing to draw.\n";
+			}
+			
+			interface->EndFinalRenderPassAndFrame();
+		}
 		
 	}
 	

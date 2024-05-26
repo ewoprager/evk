@@ -25,13 +25,13 @@ public:
 	};
 	
 	std::optional<VkWriteDescriptorSet> DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override {
-		for(std::shared_ptr<TextureImage> image : images){
+		for(const std::shared_ptr<TextureImage> &image : images){
 			if(!image){
 				return {};
 			}
 		}
 		const int startIndex = imageInfoBufferIndex;
-		for(std::shared_ptr<TextureImage> image : images){
+		for(const std::shared_ptr<TextureImage> &image : images){
 			imageInfoBuffer[imageInfoBufferIndex].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 			imageInfoBuffer[imageInfoBufferIndex].imageView = image->View();
 			imageInfoBuffer[imageInfoBufferIndex].sampler = nullptr;

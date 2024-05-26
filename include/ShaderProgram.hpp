@@ -140,18 +140,12 @@ struct StorageImagesUniform : public UniformBase<set, binding> {
 
 template <typename T>
 concept descriptor_c = requires (T val) {
-//	{T::bindingValue} -> std::same_as<uint32_t>;
-//	{T::stageFlagsValue} -> std::same_as<VkShaderStageFlags>;
 	{T::layoutBinding} -> std::same_as<VkDescriptorSetLayoutBinding>;
 	{T::poolSize} -> std::same_as<VkDescriptorPoolSize>;
-	{val.Valid()} -> std::same_as<bool>;
-	val.SetValid();
 };
 
 template <typename T, VkShaderStageFlags stageFlags>
 concept uniform_c = requires {
-//	{T::setValue} -> std::same_as<uint32_t>;
-//	{T::bindingValue} -> std::same_as<uint32_t>;
 	typename T::template descriptor_t<stageFlags>;
 	descriptor_c<typename T::template descriptor_t<stageFlags>>;
 };
@@ -172,14 +166,25 @@ requires (uniformWithShaderStage_c<uniformWithShaderStage_t> && (uniformWithShad
 consteval bool UniformIn(){
 	return ((uniformWithShaderStage_t::type::setValue == uniformWithShaderStage_ts::type::setValue && uniformWithShaderStage_t::type::bindingValue == uniformWithShaderStage_ts::type::bindingValue) || ...);
 }
+
+template <typename... uniformWithShaderStage_ts>
+struct UniformsUniqueImpl;
+template <>
+struct UniformsUniqueImpl<> {
+	static constexpr bool value = true;
+};
 template <typename uniformWithShaderStage_t>
 requires (uniformWithShaderStage_c<uniformWithShaderStage_t>)
-consteval bool UniformsUnique(){ return true; }
+struct UniformsUniqueImpl<uniformWithShaderStage_t>{
+	static constexpr bool value = true;
+};
 template <typename uniformT1, typename uniformT2, typename... uniformWithShaderStage_ts>
 requires (uniformWithShaderStage_c<uniformT1> && uniformWithShaderStage_c<uniformT2> && (uniformWithShaderStage_c<uniformWithShaderStage_ts> && ...))
-consteval bool UniformsUnique(){
-	return !UniformIn<uniformT1, uniformT2, uniformWithShaderStage_ts...>() && UniformsUnique<uniformT2, uniformWithShaderStage_ts...>();
-}
+struct UniformsUniqueImpl<uniformT1, uniformT2, uniformWithShaderStage_ts...> {
+	static constexpr bool value = !UniformIn<uniformT1, uniformT2, uniformWithShaderStage_ts...>() && UniformsUniqueImpl<uniformT2, uniformWithShaderStage_ts...>::value;
+};
+template <typename... uniformTs>
+consteval bool UniformsUnique(){ return UniformsUniqueImpl<uniformTs...>::value; }
 
 template <uint32_t set, typename uniformWithShaderStage_t>
 requires (uniformWithShaderStage_c<uniformWithShaderStage_t>)
@@ -231,52 +236,61 @@ static consteval bool AllSmallerSetsExistInUniforms(){
 template <VkVertexInputBindingDescription... bindingDescriptions> struct BindingDescriptionPack {};
 template <VkVertexInputAttributeDescription... attributeDescriptions> struct AttributeDescriptionPack {};
 
-template <typename attributeTP, typename bindingDescriptionP, typename attributeDescriptionP> struct Attributes;
-template <typename... attributeTs, VkVertexInputBindingDescription... bindingDescriptions, VkVertexInputAttributeDescription... attributeDescriptions>
-struct Attributes<TypePack<attributeTs...>, BindingDescriptionPack<bindingDescriptions...>, AttributeDescriptionPack<attributeDescriptions...>> {
+struct PipelineVertexInputStateCreateInfoSafe {
+	std::vector<VkVertexInputBindingDescription> binding;
+	std::vector<VkVertexInputAttributeDescription> attribute;
+};
+
+template <typename bindingDescriptionP, typename attributeDescriptionP> struct Attributes;
+template <VkVertexInputBindingDescription... bindingDescriptions, VkVertexInputAttributeDescription... attributeDescriptions>
+struct Attributes<BindingDescriptionPack<bindingDescriptions...>, AttributeDescriptionPack<attributeDescriptions...>> {
 	
 	static constexpr uint32_t bindingDescriptionCount = sizeof...(bindingDescriptions);
 	
 	static constexpr uint32_t attributeDescriptionCount = sizeof...(attributeDescriptions);
 	
-	static consteval uint32_t TotalSize(){ return (sizeof(attributeTs) + ...); }
-	
-	static_assert((bindingDescriptions.stride + ...) == TotalSize(), "Vertex input binding description strides should sum to the total size of all the attributes.");
-	
 	static_assert(Unique<bindingDescriptions.binding...>(), "Vertex input binding description bindings should be unique.");
 	
 	static_assert(Unique<attributeDescriptions.location...>(), "Vertex input attribute description locations should be unique.");
 	
-	static constexpr std::array<VkVertexInputBindingDescription, bindingDescriptionCount> bindingDescriptionsValue = {(bindingDescriptions, ...)};
+//	static constexpr VkVertexInputBindingDescription bindingDescriptionsValue[bindingDescriptionCount] = {(bindingDescriptions, ...)};
+//	
+//	static constexpr VkVertexInputAttributeDescription attributeDescriptionsValue[attributeDescriptionCount] = {(attributeDescriptions, ...)};
 	
-	static constexpr std::array<VkVertexInputAttributeDescription, attributeDescriptionCount> attributeDescriptionsValue = {(attributeDescriptions, ...)};
-	static constexpr VkPipelineVertexInputStateCreateInfo pipelineVertexInputStateCI = {
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-		.pNext = nullptr,
-		.flags = NULL,
-		.vertexBindingDescriptionCount = bindingDescriptionCount,
-		.pVertexBindingDescriptions = bindingDescriptionsValue.data(),
-		.vertexAttributeDescriptionCount = attributeDescriptionCount,
-		.pVertexAttributeDescriptions = attributeDescriptionsValue.data()
-	};
+//	static constexpr VkPipelineVertexInputStateCreateInfo pipelineVertexInputStateCI = {
+//		.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+//		.pNext = nullptr,
+//		.flags = 0,
+//		.vertexBindingDescriptionCount = bindingDescriptionCount,
+//		.pVertexBindingDescriptions = (VkVertexInputBindingDescription[bindingDescriptionCount]){
+//			(bindingDescriptions, ...)
+//		},
+//		.vertexAttributeDescriptionCount = attributeDescriptionCount,
+//		.pVertexAttributeDescriptions = (VkVertexInputAttributeDescription[attributeDescriptionCount]){
+//			(attributeDescriptions, ...)
+//		}
+//	};
+	
+	static PipelineVertexInputStateCreateInfoSafe PipelineVertexInputStateCI(){
+		size_t i;
+		PipelineVertexInputStateCreateInfoSafe ret {};
+		
+		ret.binding.resize(bindingDescriptionCount);
+		i = 0;
+		(void(ret.binding[i++] = bindingDescriptions), ...);
+		
+		ret.attribute.resize(attributeDescriptionCount);
+		i = 0;
+		(void(ret.attribute[i++] = attributeDescriptions), ...);
+		
+		return ret;
+	}
 };
-
 
 // Descriptor set
 // -----
-template <typename descriptor_tp> struct DescriptorSet 
-//{
-//	explicit DescriptorSet(std::shared_ptr<Devices> _devices) {
-//		throw std::runtime_error("Non-specialised template struct used.\n");
-//	}
-//	VkDescriptorSetLayout CreateLayout() {
-//		throw std::runtime_error("Non-specialised template struct used.\n");
-//		return {};
-//	}
-//}
-;
+template <typename descriptor_tp> struct DescriptorSet;
 template <typename... descriptor_ts>
-requires ((descriptor_c<descriptor_ts> && ...))
 struct DescriptorSet<TypePack<descriptor_ts...>> {
 	
 	static constexpr uint32_t descriptorCount = sizeof...(descriptor_ts);
@@ -287,7 +301,7 @@ struct DescriptorSet<TypePack<descriptor_ts...>> {
 	: devices(_devices) {}
 	
 	VkDescriptorSetLayout CreateLayout() const {
-		constexpr std::array<VkDescriptorSetLayoutBinding, descriptorCount> layoutBindings = {(descriptor_ts::LayoutBinding(), ...)};
+		constexpr std::array<VkDescriptorSetLayoutBinding, descriptorCount> layoutBindings = {(descriptor_ts::layoutBinding, ...)};
 		// binding flags
 		std::array<VkDescriptorBindingFlags, descriptorCount> flags{};
 		std::ranges::fill(flags, VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT);
@@ -381,6 +395,7 @@ private:
 // Uniforms
 // -----
 template <typename uniformWithShaderStages_tp, typename indexSequence_t> struct UniformsImpl;
+// specialisation for some uniforms
 template <typename... uniformWithShaderStage_ts, uint32_t... indices>
 requires ((uniformWithShaderStage_c<uniformWithShaderStage_ts> && ...))
 struct UniformsImpl<TypePack<uniformWithShaderStage_ts...>, std::integer_sequence<uint32_t, indices...>> {
@@ -398,20 +413,33 @@ struct UniformsImpl<TypePack<uniformWithShaderStage_ts...>, std::integer_sequenc
 	static constexpr uint32_t uniformCount = sizeof...(uniformWithShaderStage_ts);
 //	static_assert((uint32_t descriptorSet_t<indices>::descriptorCount + ...) == uniformCount, "!Inconsistency");
 	
-	static constexpr std::array<VkDescriptorPoolSize, uniformCount> poolSizes = {(descriptor_t<uniformWithShaderStage_ts>::poolSize, ...)};
+	static consteval std::array<VkDescriptorPoolSize, uniformCount> PoolSizes(){
+		if constexpr (uniformCount == 0){
+			return {{}};
+		} else {
+			return {(descriptor_t<uniformWithShaderStage_ts>::poolSize, ...)};
+		}
+	}
 	
-	template <uint32_t index>
-	descriptorSet_t<index> &iDescriptorSet(){ return std::get<index>(descriptorSets); }
+//	template <uint32_t index>
+//	descriptorSet_t<index> &iDescriptorSet(){ return std::get<index>(descriptorSets); }
 	
 	explicit UniformsImpl(std::shared_ptr<Devices> _devices)
 	: devices(_devices)
-	, descriptorSets((descriptorSet_t<indices>(_devices), ...)) {
+//	, descriptorSets(sizeof...(indices) == 0 ? {} : (descriptorSet_t<indices>(_devices), ...)) 
+	{
+		if constexpr (sizeof...(indices) == 0){
+			descriptorSets = {};
+		} else {
+			descriptorSets = (descriptorSet_t<indices>(_devices), ...);
+		}
+		
 		// descriptor pool
 		const VkDescriptorPoolCreateInfo poolInfo{
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 			.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
 			.poolSizeCount = uniformCount,
-			.pPoolSizes = poolSizes.data(),
+			.pPoolSizes = PoolSizes().data(),
 			.maxSets = uint32_t(MAX_FRAMES_IN_FLIGHT * descriptorSetCount)
 		};
 		if(vkCreateDescriptorPool(_devices->GetLogicalDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS){
@@ -537,97 +565,29 @@ template <const char *filename, typename pushConstants_t, typename attributes_t,
 struct VertexShader
 : public Shader<VK_SHADER_STAGE_VERTEX_BIT, filename, pushConstants_t, uniform_ts...> {
 	
-	static constexpr VkPipelineVertexInputStateCreateInfo pipelineVertexInputStateCI = attributes_t::pipelineVertexInputStateCI;
+//	static constexpr const VkPipelineVertexInputStateCreateInfo *const pipelineVertexInputStateCI = &attributes_t::pipelineVertexInputStateCI;
+	static PipelineVertexInputStateCreateInfoSafe PipelineVertexInputStateCI(){ return attributes_t::PipelineVertexInputStateCI(); }
 };
 
 template <typename T>
 concept vertexShader_c = requires (T val) {
 	shader_c<T>;
-	{T::pipelineVertexInputStateCI} -> std::same_as<const VkPipelineVertexInputStateCreateInfo &>;
+//	{T::pipelineVertexInputStateCI} -> std::same_as<const VkPipelineVertexInputStateCreateInfo *const &>;
+	{T::PipelineVertexInputStateCI()} -> std::same_as<PipelineVertexInputStateCreateInfoSafe>;
 };
 
 // Pipeline
 // -----
-template <typename uniforms_t, typename pushConstantWithShaderStages_tp> class PipelineBase;
-template <typename uniforms_t, typename... pushConstantWithShaderStage_ts>
+template <typename pushConstantWithShaderStages_tp> struct PushConstantManager;
+template <typename... pushConstantWithShaderStage_ts>
 requires ((pushConstantWithShaderStage_c<pushConstantWithShaderStage_ts> && ...))
-class PipelineBase<uniforms_t, TypePack<pushConstantWithShaderStage_ts...>> {
-public:
+struct PushConstantManager<TypePack<pushConstantWithShaderStage_ts...>> {
 	static constexpr uint32_t pushConstantCount = sizeof...(pushConstantWithShaderStage_ts);
 	
 	static constexpr std::array<VkPushConstantRange, pushConstantCount> pushConstantRanges = {{pushConstantWithShaderStage_ts::rangeValue...}};
 	
-	PipelineBase(std::shared_ptr<Devices> _devices)
-	: devices(_devices), uniforms(_devices) {
-		// pipeline layout
-		const VkPipelineLayoutCreateInfo pipelineLayoutInfo{
-			.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-			.setLayoutCount = uniforms_t::descriptorSetCount, // Optional
-			.pSetLayouts = uniforms.DescriptorSetLayouts().data(), // Optional
-			.pushConstantRangeCount = pushConstantCount,
-			.pPushConstantRanges = pushConstantCount == 0 ? nullptr : pushConstantRanges.data()
-		};
-		if(vkCreatePipelineLayout(_devices->GetLogicalDevice(), &pipelineLayoutInfo, nullptr, &layout) != VK_SUCCESS){
-			throw std::runtime_error("Failed to create pipeline layout!");
-		}
-	}
-	
-	~PipelineBase(){
-		vkDestroyPipeline(devices->GetLogicalDevice(), pipeline, nullptr);
-		vkDestroyPipelineLayout(devices->GetLogicalDevice(), layout, nullptr);
-	}
-	
-	// ----- Methods to call after Init() -----
-	// Bind the pipeline for subsequent render calls
-	void CmdBind(VkCommandBuffer commandBuffer) const {
-		vkCmdBindPipeline(commandBuffer, BindPoint(), pipeline);
-	}
-	// Set which descriptor sets are bound for subsequent render calls
-	template <int first=0, int number=0>
-	bool CmdBindDescriptorSets(VkCommandBuffer commandBuffer, int flight, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) const {
-		constexpr uint32_t numberUse = number < 1 ? int(uniforms_t::descriptorSetCount) - first : number;
-		
-		// making sure all descriptor sets are valid
-		if(!uniforms.template UpdateDescriptorSets<first, numberUse>()){
-			return false;
-		}
-		
-		// binding, optionally using dynamic offsets
-		if(dynamicOffsetNumbers.empty()){
-			vkCmdBindDescriptorSets(commandBuffer, BindPoint(), layout, first, numberUse, &uniforms.DescriptorSetsStart(flight), 0, nullptr);
-		} else {
-			const std::vector<uint32_t> dynamicOffsets = uniforms.template GetDynamicOffsets<first, numberUse>(dynamicOffsetNumbers);
-			vkCmdBindDescriptorSets(commandBuffer, BindPoint(), layout, first, numberUse, uniforms.DescriptorSetsStart(flight), uint32_t(dynamicOffsets.size()), dynamicOffsets.data());
-		}
-		return true;
-	}
-	
-	// Set push constant data
 	template <uint32_t index>
-	void CmdPushConstants(VkCommandBuffer commandBuffer, IndexT<index, pushConstantWithShaderStage_ts...>::type *data){
-		using pushConstantT = IndexT<index, pushConstantWithShaderStage_ts...>::type;
-		vkCmdPushConstants(commandBuffer,
-						   layout,
-						   pushConstantT::stageFlagsValue,
-						   pushConstantT::offsetValue,
-						   sizeof(pushConstantT::type),
-						   data);
-	}
-	
-	// Get the handle of a descriptor set
-	template <uint32_t index>
-	uniforms_t::template descriptorSet_t<index> &DescriptorSet(){ return uniforms.template DescriptorSet<index>(); }
-	
-protected:
-	std::shared_ptr<Devices> devices;
-	
-	uniforms_t uniforms;
-	
-	VkPipelineLayout layout;
-	
-	VkPipeline pipeline;
-	
-	virtual VkPipelineBindPoint BindPoint() const = 0;
+	using pushConstant_t = IndexT<index, pushConstantWithShaderStage_ts...>::type;
 };
 
 struct RenderPipelineBlueprint {
@@ -647,38 +607,69 @@ struct RenderPipelineBlueprint {
 //Uniforms<withShaderStagesMerged_t<concatenatedPack_t<typename vertexShader_t::uniformWithShaderStage_tp, typename fragmentShader_t::uniformWithShaderStage_tp>>>
 //>;
 
+//static constexpr VkPipelineVertexInputStateCreateInfo vertexCI = {
+//	VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+//	nullptr,
+//	NULL,
+//	1,
+//	(VkVertexInputBindingDescription[1]){
+//		{
+//			0, // binding
+//			20, // stride
+//			VK_VERTEX_INPUT_RATE_VERTEX // input rate
+//		}
+//	},
+//	2,
+//	(VkVertexInputAttributeDescription[2]){
+//		VkVertexInputAttributeDescription{
+//			1, 0, VK_FORMAT_R32G32B32_SFLOAT, 8
+//		},
+//		VkVertexInputAttributeDescription{
+//			0, 0, VK_FORMAT_R32G32_SFLOAT, 0
+//		}
+//	}
+//};
+
 template <typename vertexShader_t, typename fragmentShader_t>
 requires (vertexShader_c<vertexShader_t> && shader_c<fragmentShader_t>)
-class RenderPipeline : public 
-PipelineBase<
-	Uniforms<withShaderStagesMerged_t<concatenatedPack_t<typename vertexShader_t::uniformWithShaderStage_tp, typename fragmentShader_t::uniformWithShaderStage_tp>>>,
-	withShaderStagesMerged_t<concatenatedPack_t<typename vertexShader_t::pushConstantWithShaderStage_tp, typename fragmentShader_t::pushConstantWithShaderStage_tp>>
->
-{
+class RenderPipeline {
 public:
-	using PipelineBase = typename RenderPipeline::PipelineBase;
+	using uniforms_t = Uniforms<withShaderStagesMerged_t<concatenatedPack_t<typename vertexShader_t::uniformWithShaderStage_tp, typename fragmentShader_t::uniformWithShaderStage_tp>>>;
+	
+	using pushConstantManager_t = PushConstantManager<withShaderStagesMerged_t<concatenatedPack_t<typename vertexShader_t::pushConstantWithShaderStage_tp, typename fragmentShader_t::pushConstantWithShaderStage_tp>>>;
 	
 	RenderPipeline(std::shared_ptr<Devices> _devices, const RenderPipelineBlueprint &blueprint)
-	: PipelineBase(_devices) {
-		 // ----- Input assembly info -----
-		 const VkPipelineInputAssemblyStateCreateInfo inputAssembly {
+	: devices(_devices), uniforms(_devices) {
+		// pipeline layout
+		const VkPipelineLayoutCreateInfo pipelineLayoutInfo{
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+			.setLayoutCount = uniforms_t::descriptorSetCount, // Optional
+			.pSetLayouts = uniforms.DescriptorSetLayouts().data(), // Optional
+			.pushConstantRangeCount = pushConstantManager_t::pushConstantCount,
+			.pPushConstantRanges = pushConstantManager_t::pushConstantCount == 0 ? nullptr : pushConstantManager_t::pushConstantRanges.data()
+		};
+		if(vkCreatePipelineLayout(_devices->GetLogicalDevice(), &pipelineLayoutInfo, nullptr, &layout) != VK_SUCCESS){
+			throw std::runtime_error("Failed to create pipeline layout!");
+		}
+		// ----- Input assembly info -----
+		const VkPipelineInputAssemblyStateCreateInfo inputAssembly {
 			 .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
 			 .topology = blueprint.primitiveTopology,
 			 .primitiveRestartEnable = VK_FALSE
-		 };
-		 // ----- Viewport state -----
-		 const VkPipelineViewportStateCreateInfo viewportState {
+		};
+		// ----- Viewport state -----
+		const VkPipelineViewportStateCreateInfo viewportState {
 			 .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
 			 .viewportCount = 1,
 			 .scissorCount = 1
-		 };
-		 // Shader stages
-		 const VkPipelineShaderStageCreateInfo stageCIs[2] = {
+		};
+		// Shader stages
+		const VkPipelineShaderStageCreateInfo stageCIs[2] = {
 			 {// vertex shader
 				 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 				 .stage = VK_SHADER_STAGE_VERTEX_BIT,
 				 .pName = "main",
-				 .module = PipelineBase::devices->CreateShaderModule(vertexShader_t::filenameValue.data()),
+				 .module = devices->CreateShaderModule(vertexShader_t::filenameValue.data()),
 				 // this is for constants to use in the shader:
 				 .pSpecializationInfo = nullptr
 			 },
@@ -686,17 +677,29 @@ public:
 				 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 				 .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
 				 .pName = "main",
-				 .module = PipelineBase::devices->CreateShaderModule(fragmentShader_t::filenameValue.data()),
+				 .module = devices->CreateShaderModule(fragmentShader_t::filenameValue.data()),
 				 // this is for constants to use in the shader:
 				 .pSpecializationInfo = nullptr
 			 }
-		 };
-		 // Pipeline
-		 const VkGraphicsPipelineCreateInfo pipelineInfo{
+		};
+		
+		const PipelineVertexInputStateCreateInfoSafe pviscis = vertexShader_t::PipelineVertexInputStateCI();
+		const VkPipelineVertexInputStateCreateInfo pvisci = {
+			VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+			nullptr,
+			NULL,
+			uint32_t(pviscis.binding.size()),
+			pviscis.binding.data(),
+			uint32_t(pviscis.attribute.size()),
+			pviscis.attribute.data()
+		};
+		
+		// Pipeline
+		const VkGraphicsPipelineCreateInfo pipelineInfo{
 			 .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
 			 .stageCount = 2,
 			 .pStages = stageCIs,
-			 .pVertexInputState = &vertexShader_t::pipelineVertexInputStateCI,
+			 .pVertexInputState = &pvisci,//vertexShader_t::pipelineVertexInputStateCI,
 			 .pInputAssemblyState = &inputAssembly,
 			 .pViewportState = &viewportState,
 			 .pRasterizationState = &blueprint.rasterisationStateCI,
@@ -704,68 +707,120 @@ public:
 			 .pDepthStencilState = &blueprint.depthStencilStateCI, // Optional
 			 .pColorBlendState = &blueprint.colourBlendStateCI,
 			 .pDynamicState = &blueprint.dynamicStateCI,
-			 .layout = PipelineBase::layout,
+			 .layout = layout,
 			 .renderPass = blueprint.renderPassHandle,
 			 .subpass = 0,
 			 .basePipelineHandle = VK_NULL_HANDLE, // Optional
 			 .basePipelineIndex = -1 // Optional
-		 };
-		 if(vkCreateGraphicsPipelines(PipelineBase::devices->GetLogicalDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &(PipelineBase::pipeline)) != VK_SUCCESS){
+		};
+		if(vkCreateGraphicsPipelines(devices->GetLogicalDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS){
 			 throw std::runtime_error("failed to create graphics pipeline!");
-		 }
-	 }
-	
+		}
+	}
 	~RenderPipeline(){
+		vkDestroyPipeline(devices->GetLogicalDevice(), pipeline, nullptr);
+		vkDestroyPipelineLayout(devices->GetLogicalDevice(), layout, nullptr);
 //		vkDestroyShaderModule(devices->GetLogicalDevice(), fragShaderModule, nullptr);
 //		vkDestroyShaderModule(devices->GetLogicalDevice(), vertShaderModule, nullptr);
 	}
 	
-protected:
-	VkPipelineBindPoint BindPoint() const override { return VK_PIPELINE_BIND_POINT_GRAPHICS; }
-};
-
-
-template <typename computeShader_t>
-requires(shader_c<computeShader_t>)
-using computePipelineBase_t = PipelineBase<
-Uniforms<typename computeShader_t::uniforms_tp>,
-typename computeShader_t::pushConstants_tp
->;
-
-template <typename computeShader_t>
-requires(shader_c<computeShader_t>)
-class ComputePipeline : public computePipelineBase_t<computeShader_t> {
-public:
-	using PipelineBase = typename ComputePipeline::PipelineBase;
+	// Bind the pipeline for subsequent render calls
+	void CmdBind(VkCommandBuffer commandBuffer) const {
+		vkCmdBindPipeline(commandBuffer, bindPoint, pipeline);
+	}
 	
-	ComputePipeline(std::shared_ptr<Devices> _devices)
-	: PipelineBase(_devices) {
+	// Set which descriptor sets are bound for subsequent render calls
+	template <int first=0, int number=0>
+	bool CmdBindDescriptorSets(VkCommandBuffer commandBuffer, int flight, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) const {
+		constexpr uint32_t numberUse = number < 1 ? int(uniforms_t::descriptorSetCount) - first : number;
 		
-		// Shader stage
-		const VkPipelineShaderStageCreateInfo stageCI = {
-			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-			.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-			.pName = "main",
-			.module = PipelineBase::devices->CreateShaderModule(computeShader_t::filename),
-			// this is for constants to use in the shader:
-			.pSpecializationInfo = nullptr
-		};
-		// Pipeline
-		VkComputePipelineCreateInfo pipelineInfo{
-			.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-			.stage = stageCI,
-			.layout = PipelineBase::layout
-		};
-		if(vkCreateComputePipelines(PipelineBase::devices->GetLogicalDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &(PipelineBase::pipeline)) != VK_SUCCESS){
-			throw std::runtime_error("Failed to create compute pipeline!");
+		// making sure all descriptor sets are valid
+		if(!uniforms.template UpdateDescriptorSets<first, numberUse>()){
+			return false;
 		}
-	}
-	~ComputePipeline(){
-//		vkDestroyShaderModule(devices->GetLogicalDevice(), shaderModule, nullptr);
+		
+		// binding, optionally using dynamic offsets
+		if(dynamicOffsetNumbers.empty()){
+			vkCmdBindDescriptorSets(commandBuffer, bindPoint, layout, first, numberUse, &uniforms.DescriptorSetsStart(flight), 0, nullptr);
+		} else {
+			const std::vector<uint32_t> dynamicOffsets = uniforms.template GetDynamicOffsets<first, numberUse>(dynamicOffsetNumbers);
+			vkCmdBindDescriptorSets(commandBuffer, bindPoint, layout, first, numberUse, uniforms.DescriptorSetsStart(flight), uint32_t(dynamicOffsets.size()), dynamicOffsets.data());
+		}
+		return true;
 	}
 	
+	template <uint32_t index>
+	using pushConstant_t = typename pushConstantManager_t::template pushConstant_t<index>;
+	
+	// Set push constant data
+	template <uint32_t index>
+	void CmdPushConstants(VkCommandBuffer commandBuffer, pushConstant_t<index> *data){
+		vkCmdPushConstants(commandBuffer,
+						   layout,
+						   pushConstant_t<index>::stageFlagsValue,
+						   pushConstant_t<index>::offsetValue,
+						   sizeof(pushConstant_t<index>::type),
+						   data);
+	}
+	
+	// Get the handle of a descriptor set
+//	template <uint32_t index>
+//	uniforms_t::template descriptorSet_t<index> &iDescriptorSet(){ return uniforms.template iDescriptorSet<index>(); }
+	
 protected:
-	VkPipelineBindPoint BindPoint() const override { return VK_PIPELINE_BIND_POINT_COMPUTE; }
+	std::shared_ptr<Devices> devices;
+	
+	uniforms_t uniforms;
+	
+	VkPipelineLayout layout;
+	
+	VkPipeline pipeline;
+	
+	static constexpr VkPipelineBindPoint bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 };
+
+
+//template <typename computeShader_t>
+//requires(shader_c<computeShader_t>)
+//using computePipelineBase_t = PipelineBase<
+//Uniforms<typename computeShader_t::uniforms_tp>,
+//typename computeShader_t::pushConstants_tp
+//>;
+//
+//template <typename computeShader_t>
+//requires(shader_c<computeShader_t>)
+//class ComputePipeline : public computePipelineBase_t<computeShader_t> {
+//public:
+//	using PipelineBase = typename ComputePipeline::PipelineBase;
+//	
+//	ComputePipeline(std::shared_ptr<Devices> _devices)
+//	: PipelineBase(_devices) {
+//		
+//		// Shader stage
+//		const VkPipelineShaderStageCreateInfo stageCI = {
+//			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+//			.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+//			.pName = "main",
+//			.module = PipelineBase::devices->CreateShaderModule(computeShader_t::filename),
+//			// this is for constants to use in the shader:
+//			.pSpecializationInfo = nullptr
+//		};
+//		// Pipeline
+//		VkComputePipelineCreateInfo pipelineInfo{
+//			.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+//			.stage = stageCI,
+//			.layout = PipelineBase::layout
+//		};
+//		if(vkCreateComputePipelines(PipelineBase::devices->GetLogicalDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &(PipelineBase::pipeline)) != VK_SUCCESS){
+//			throw std::runtime_error("Failed to create compute pipeline!");
+//		}
+//	}
+//	~ComputePipeline(){
+////		vkDestroyShaderModule(devices->GetLogicalDevice(), shaderModule, nullptr);
+//	}
+//	
+//protected:
+//	VkPipelineBindPoint BindPoint() const override { return VK_PIPELINE_BIND_POINT_COMPUTE; }
+//};
 
 } // namespace EVK

@@ -56,7 +56,15 @@ add_executable(test
             "${CMAKE_CURRENT_SOURCE_DIR}/${SOURCES}"
             "${CMAKE_CURRENT_SOURCE_DIR}/${HEADERS}"
             "${CMAKE_CURRENT_SOURCE_DIR}/test/main.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/test/vert.vert"
+            "${CMAKE_CURRENT_SOURCE_DIR}/test/frag.frag"
             )
+
+#execute_process(COMMAND "./compile.sh"
+#				WORKING_DIRECTORY "test")
+
+#file(COPY "test/Shaders/"
+#     DESTINATION "Shaders/")
 
 target_include_directories(test PUBLIC
                            "${CMAKE_CURRENT_SOURCE_DIR}/include/"
