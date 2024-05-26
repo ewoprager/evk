@@ -108,6 +108,8 @@ struct PushConstantType {
 using PCS = EVK::PushConstants<16, PushConstantType>;
 static_assert(EVK::pushConstants_c<PCS>);
 
+static_assert(EVK::pushConstantWithShaderStage_c<EVK::WithShaderStage<VK_SHADER_STAGE_FRAGMENT_BIT, PCS>>);
+
 using type = EVK::Shader<VK_SHADER_STAGE_FRAGMENT_BIT, ch1, PCS,
 EVK::UBOUniform<0, 0, false>,
 EVK::TextureSamplersUniform<0, 1, 1>,
@@ -240,6 +242,24 @@ EVK::RenderPipelineBlueprint Blueprint(VkRenderPass renderPassHandle){
 }
 
 } // namespace MainInstancedPipeline
+
+using uniforms_t =
+EVK::UniformsImpl<
+EVK::TypePack<
+	EVK::WithShaderStage<17, EVK::UBOUniform<0, 0>>,
+	EVK::WithShaderStage<16, EVK::TextureSamplersUniform<0, 1>>,
+	EVK::WithShaderStage<16, EVK::TextureImagesUniform<0, 2, 3>>,
+	EVK::WithShaderStage<16, EVK::CombinedImageSamplersUniform<0, 3>>
+>,
+std::integer_sequence<unsigned int, 0>
+>;
+using pushConstantWithShaderStages_tp =
+EVK::TypePack<
+	EVK::WithShaderStage<1, EVK::PushConstants<0, MainInstancedPipeline::VertexShader::PushConstantType>>,
+	EVK::WithShaderStage<16, EVK::PushConstants<16, MainInstancedPipeline::FragmentShader::PushConstantType>>
+>;
+static_assert(EVK::pushConstantWithShaderStage_c<EVK::WithShaderStage<1, EVK::PushConstants<0, MainInstancedPipeline::VertexShader::PushConstantType>>>);
+static_assert(EVK::pushConstantWithShaderStage_c<EVK::WithShaderStage<16, EVK::PushConstants<16, MainInstancedPipeline::FragmentShader::PushConstantType>>>);
 
 int main(int argc, char *argv[]){
 	std::cout << "Hello, World!\n";

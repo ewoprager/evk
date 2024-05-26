@@ -22,23 +22,25 @@ template <size_t offset, typename T> struct PushConstants {
 };
 
 template <typename T>
-concept NotNoPushConstants_c = requires {
+concept notNoPushConstants_c = requires {
 	{T::offsetValue} -> std::same_as<uint32_t>;
 	typename T::type;
 };
 
 template <typename T>
 concept pushConstants_c = requires {
-	std::same_as<T, NoPushConstants> || NotNoPushConstants_c<T>;
+	std::same_as<T, NoPushConstants> || notNoPushConstants_c<T>;
 };
 
 template <VkShaderStageFlags stageFlags, typename T> struct WithShaderStage {
 	static constexpr VkShaderStageFlags stageFlagsValue = stageFlags;
 	using type = T;
-	static constexpr VkPushConstantRange rangeValue = {};
+//	static constexpr VkPushConstantRange rangeValue = {};
 };
 template <VkShaderStageFlags stageFlags, size_t offset, typename T>
 struct WithShaderStage<stageFlags, PushConstants<offset, T>> {
+	static constexpr VkShaderStageFlags stageFlagsValue = stageFlags;
+	using type = T;
 	static constexpr VkPushConstantRange rangeValue = {stageFlags, offset, sizeof(T)};
 };
 
@@ -48,10 +50,14 @@ concept withShaderStage_c = requires {
 	typename T::type;
 };
 
-// merge one WithShaderStage into a pack of pre-merged WithShaderStages
-template <typename checkedTP, typename withShaderStageT, typename notCheckedTP> struct OneWithShaderStageMergedIntoMerged {
-	using packType = TypePack<>;
+template <typename T>
+concept pushConstantWithShaderStage_c = requires {
+	withShaderStage_c<T>;
+	pushConstants_c<typename T::type>;
 };
+
+// merge one WithShaderStage into a pack of pre-merged WithShaderStages
+template <typename checkedTP, typename withShaderStageT, typename notCheckedTP> struct OneWithShaderStageMergedIntoMerged;
 template <typename... checkedTs, typename withShaderStageT> struct OneWithShaderStageMergedIntoMerged<TypePack<checkedTs...>, withShaderStageT, TypePack<>> {
 	using packType = TypePack<checkedTs..., withShaderStageT>;
 };
@@ -64,11 +70,11 @@ struct OneWithShaderStageMergedIntoMerged<TypePack<checkedTs...>, withShaderStag
 	TypePack<checkedTs..., withShaderStageT, notCheckedT>
 	>;
 };
-template <typename... checkedTs, typename withShaderStageT, typename notCheckedT, typename other, typename... rest> struct OneWithShaderStageMergedIntoMerged<TypePack<checkedTs...>, withShaderStageT, TypePack<notCheckedT, other, rest...>> {
+template <typename... checkedTs, typename withShaderStageT, typename notCheckedT, typename... rest> struct OneWithShaderStageMergedIntoMerged<TypePack<checkedTs...>, withShaderStageT, TypePack<notCheckedT, rest...>> {
 	using packType = std::conditional_t<
 	std::same_as<typename withShaderStageT::type, typename notCheckedT::type>,
-	TypePack<checkedTs..., WithShaderStage<withShaderStageT::stageFlagsValue | notCheckedT::stageFlagsValue, typename withShaderStageT::type>, other, rest...>,
-	typename OneWithShaderStageMergedIntoMerged<TypePack<checkedTs..., notCheckedT>, withShaderStageT, TypePack<other, rest...>>::packType
+	TypePack<checkedTs..., WithShaderStage<withShaderStageT::stageFlagsValue | notCheckedT::stageFlagsValue, typename withShaderStageT::type>, rest...>,
+	typename OneWithShaderStageMergedIntoMerged<TypePack<checkedTs..., notCheckedT>, withShaderStageT, TypePack<rest...>>::packType
 	>;
 };
 template <typename T>
@@ -542,11 +548,10 @@ concept vertexShader_c = requires (T val) {
 
 // Pipeline
 // -----
-template <typename pushConstantWithShaderStages_tp, typename uniforms_t>
-class PipelineBase;
-
-template <typename... pushConstantWithShaderStage_ts, typename uniforms_t>
-class PipelineBase<TypePack<pushConstantWithShaderStage_ts...>, uniforms_t> {
+template <typename uniforms_t, typename pushConstantWithShaderStages_tp> class PipelineBase;
+template <typename uniforms_t, typename... pushConstantWithShaderStage_ts>
+requires ((pushConstantWithShaderStage_c<pushConstantWithShaderStage_ts> && ...))
+class PipelineBase<uniforms_t, TypePack<pushConstantWithShaderStage_ts...>> {
 public:
 	static constexpr uint32_t pushConstantCount = sizeof...(pushConstantWithShaderStage_ts);
 	
@@ -646,8 +651,8 @@ template <typename vertexShader_t, typename fragmentShader_t>
 requires (vertexShader_c<vertexShader_t> && shader_c<fragmentShader_t>)
 class RenderPipeline : public 
 PipelineBase<
-	withShaderStagesMerged_t<concatenatedPack_t<typename vertexShader_t::pushConstantWithShaderStage_tp, typename fragmentShader_t::pushConstantWithShaderStage_tp>>,
-	Uniforms<withShaderStagesMerged_t<concatenatedPack_t<typename vertexShader_t::uniformWithShaderStage_tp, typename fragmentShader_t::uniformWithShaderStage_tp>>>
+	Uniforms<withShaderStagesMerged_t<concatenatedPack_t<typename vertexShader_t::uniformWithShaderStage_tp, typename fragmentShader_t::uniformWithShaderStage_tp>>>,
+	withShaderStagesMerged_t<concatenatedPack_t<typename vertexShader_t::pushConstantWithShaderStage_tp, typename fragmentShader_t::pushConstantWithShaderStage_tp>>
 >
 {
 public:
@@ -723,8 +728,8 @@ protected:
 template <typename computeShader_t>
 requires(shader_c<computeShader_t>)
 using computePipelineBase_t = PipelineBase<
-typename computeShader_t::pushConstants_tp,
-Uniforms<typename computeShader_t::uniforms_tp>
+Uniforms<typename computeShader_t::uniforms_tp>,
+typename computeShader_t::pushConstants_tp
 >;
 
 template <typename computeShader_t>

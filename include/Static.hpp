@@ -13,16 +13,16 @@
 
 namespace EVK {
 
-template <uint32_t _value> struct IntValueT {
-	static constexpr uint32_t value = _value;
-};
-
 // Type parameter pack
 template <typename... Ts> struct TypePack {
 	static constexpr bool empty = false;
 };
 template <> struct TypePack<> {
 	static constexpr bool empty = true;
+};
+template <typename T>
+concept typePack_c = requires {
+	{T::empty} -> std::same_as<const bool &>;
 };
 
 // Type pack concatenation
@@ -67,64 +67,5 @@ constexpr bool IsMultipleOf(integralT num, integralT of){
 }
 
 template <typename T> consteval uint32_t AttributeSizeInShader(){ return RoundUp<uint32_t>(sizeof(T), 16) / 16; }
-
-//
-//
-//Shader<
-//NoPushConstants,
-//Attributes<
-//	TypePack<vec<3>, vec<3>, vec<2>, mat<4, 4>, mat<4, 4>>,
-//	BindingDescriptionPack<
-//		VkVertexInputBindingDescription{
-//			0, // binding
-//			32,//sizeof(Vertex), // stride
-//			VK_VERTEX_INPUT_RATE_VERTEX // input rate
-//		},
-//		VkVertexInputBindingDescription{
-//			1, // binding
-//			128,//sizeof(Vertex), // stride
-//			VK_VERTEX_INPUT_RATE_INSTANCE // input rate
-//		}
-//	>,
-//	AttributeDescriptionPack<
-//		VkVertexInputAttributeDescription{
-//			0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0//offsetof(Vertex, position)
-//		},
-//		VkVertexInputAttributeDescription{
-//			1, 0, VK_FORMAT_R32G32B32_SFLOAT, 12//offsetof(Vertex, normal)
-//		},
-//		VkVertexInputAttributeDescription{
-//			2, 0, VK_FORMAT_R32G32_SFLOAT, 24//offsetof(Vertex, texCoord)
-//		},
-//		VkVertexInputAttributeDescription{
-//			3, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 0//offsetof(Vertex, position)
-//		},
-//		VkVertexInputAttributeDescription{
-//			4, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 16//offsetof(Vertex, position)
-//		},
-//		VkVertexInputAttributeDescription{
-//			5, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 32//offsetof(Vertex, position)
-//		},
-//		VkVertexInputAttributeDescription{
-//			6, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 48//offsetof(Vertex, position)
-//		},
-//		VkVertexInputAttributeDescription{
-//			7, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 64//offsetof(Vertex, normal)
-//		},
-//		VkVertexInputAttributeDescription{
-//			8, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 80//offsetof(Vertex, normal)
-//		},
-//		VkVertexInputAttributeDescription{
-//			9, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 96//offsetof(Vertex, normal)
-//		},
-//		VkVertexInputAttributeDescription{
-//			10, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 112//offsetof(Vertex, normal)
-//		}
-//>>,
-//Uniforms<
-//	UBO<0, 0, VK_SHADER_STAGE_FRAGMENT_BIT, float>,
-//	TextureImage<0, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT>
-//>>
-//shader;
 
 } // namespace EVK
