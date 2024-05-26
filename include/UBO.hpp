@@ -9,6 +9,11 @@ class UBODescriptor : public DescriptorBase<binding, stageFlags> {
 public:
 	UBODescriptor() = default;
 	
+	void Set(std::shared_ptr<UniformBufferObject> value){
+		object = std::move(value);
+		DescriptorBase<binding, stageFlags>::valid = false;
+	}
+	
 	static consteval VkDescriptorSetLayoutBinding LayoutBinding() {
 		return (VkDescriptorSetLayoutBinding){
 			.binding = binding,
@@ -44,6 +49,14 @@ public:
 			.type = dynamic ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 			.descriptorCount = 1 * MAX_FRAMES_IN_FLIGHT
 		};
+	}
+	
+	std::optional<UniformBufferObject::Dynamic> GetUBODynamic() const override {
+		if(!object){
+			std::cout << "Cannot get if UBO is dynamic; no object.\n";
+			return {};
+		}
+		return object->GetDynamic();
 	}
 	
 private:

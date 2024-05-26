@@ -9,6 +9,16 @@ class CombinedImageSamplersDescriptor : public DescriptorBase<binding, stageFlag
 public:
 	CombinedImageSamplersDescriptor() = default;
 	
+	struct Combo {
+		std::shared_ptr<TextureImage> image;
+		std::shared_ptr<TextureSampler> sampler;
+	};
+	
+	void Set(std::array<Combo, count> value){
+		combos = std::move(value);
+		DescriptorBase<binding, stageFlags>::valid = false;
+	}
+	
 	static consteval VkDescriptorSetLayoutBinding LayoutBinding() {
 		return (VkDescriptorSetLayoutBinding){
 			.binding = binding,
@@ -32,6 +42,7 @@ public:
 			imageInfoBuffer[imageInfoBufferIndex].sampler = combo.sampler->Handle();
 			imageInfoBufferIndex++;
 		}
+		
 		return (VkWriteDescriptorSet){
 			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
 			.dstSet = dstSet,
@@ -50,12 +61,10 @@ public:
 		};
 	}
 	
+	
+	
 private:
-	struct Combo {
-		std::shared_ptr<TextureImage> image;
-		std::shared_ptr<TextureSampler> sampler;
-	};
-	std::array<Combo, count> combos;
+	std::array<Combo, count> combos {};
 };
 
 } // namespace EVK

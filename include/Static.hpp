@@ -13,6 +13,10 @@
 
 namespace EVK {
 
+template <uint32_t _value> struct IntValueT {
+	static constexpr uint32_t value = _value;
+};
+
 // Type parameter pack
 template <typename... Ts> struct TypePack {
 	static constexpr bool empty = false;

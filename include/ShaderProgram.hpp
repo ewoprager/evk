@@ -221,7 +221,7 @@ struct DescriptorSet<TypePack<descriptorTs...>> {
 		return handle;
 	}
 	
-	void Update(const std::function<VkDescriptorSet(uint32_t)> &dstSetFromFlight){
+	bool Update(const std::function<VkDescriptorSet(uint32_t)> &dstSetFromFlight){
 		VkDescriptorBufferInfo bufferInfos[32];
 		VkDescriptorImageInfo imageInfos[256];
 		int bufferInfoCounter, imageInfoCounter;
@@ -233,17 +233,33 @@ struct DescriptorSet<TypePack<descriptorTs...>> {
 			bufferInfoCounter = 0;
 			imageInfoCounter = 0;
 			
-			[&]<uint32_t... indices>(std::index_sequence<indices...>){
-				([&](){
-					const std::optional<VkWriteDescriptorSet> maybeDescriptorWrite = std::get<indices>(descriptors).DescriptorWrite(dstSetFromFlight(i)/*pipeline.descriptorSetsFlying[pipeline.descriptorSets.size() * i + index]*/, imageInfos, imageInfoCounter, bufferInfos, bufferInfoCounter, i);
-					if(maybeDescriptorWrite){
-						descriptorWrites.push_back(maybeDescriptorWrite.value());
+			if(![&]<uint32_t... indices>(std::integer_sequence<uint32_t, indices...>) -> bool {
+				return ([&]() -> bool {
+					const std::optional<VkWriteDescriptorSet> maybeDescriptorWrite = std::get<indices>(descriptors).DescriptorWrite(dstSetFromFlight(i), imageInfos, imageInfoCounter, bufferInfos, bufferInfoCounter, i);
+					if(!maybeDescriptorWrite){
+						return false;
 					}
-				}(), ...);
-			}(std::make_integer_sequence<uint32_t, descriptorCount>{});
-			
+					descriptorWrites.push_back(maybeDescriptorWrite.value());
+					return true;
+				}() && ...);
+			}(std::make_integer_sequence<uint32_t, descriptorCount>{})){
+				return false;
+			}
 			vkUpdateDescriptorSets(devices->GetLogicalDevice(), uint32_t(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 		}
+		// telling descriptors that they are valid
+		[&]<uint32_t... indices>(std::integer_sequence<uint32_t, indices...>){
+			([&](){
+				std::get<indices>(descriptors).SetValid();
+			}(), ...);
+		}(std::make_integer_sequence<uint32_t, descriptorCount>{});
+		return true;
+	}
+	
+	bool CheckDescriptorsValid() const {
+		return [&]<uint32_t... indices>(std::integer_sequence<uint32_t, indices...>) -> bool {
+			return (std::get<indices>(descriptors).Valid() && ...);
+		}(std::make_integer_sequence<uint32_t, descriptorCount>{});
 	}
 	
 //	size_t GetDescriptorCount() const { return descriptors.size(); }
@@ -340,10 +356,15 @@ struct UniformsImpl<TypePack<uniformTs...>, std::integer_sequence<uint32_t, indi
 		}
 	}
 	
-	void UpdateDescriptorSets(){
-		(std::get<indices>(descriptorSets).Update([this](uint32_t flight) -> VkDescriptorSet {
-			return descriptorSetsFlying[descriptorSetCount * flight + indices];
-		}), ...);
+	// have to do this every time any elements of any descriptors are changed, e.g. when an image view is re-created upon window resize
+	template <uint32_t first, uint32_t number>
+	bool UpdateDescriptorSets(){
+		if(CheckDescriptorSetsValid<first, number>()){
+			return true;
+		}
+		return [&]<uint32_t... indexSubset>(std::integer_sequence<uint32_t, indexSubset...>) -> bool {
+			return (std::get<indexSubset + first>(descriptorSets).Update() && ...);
+		}(std::make_integer_sequence<uint32_t, descriptorSetCount - number>{});
 	}
 	
 	const std::array<VkDescriptorSetLayout, descriptorSetCount> &DescriptorSetLayouts() const {
@@ -354,6 +375,22 @@ struct UniformsImpl<TypePack<uniformTs...>, std::integer_sequence<uint32_t, indi
 		return &descriptorSetsFlying[flight * descriptorSetCount];
 	}
 	
+	template <uint32_t first, uint32_t number>
+	std::vector<uint32_t> GetDynamicOffsets(const std::vector<int> &dynamicOffsetNumbers) const {
+		std::vector<uint32_t> ret {};
+		int indexOfDynamic = 0;
+		[&]<uint32_t... indexSubset>(std::integer_sequence<uint32_t, indexSubset...>){
+			([&](){
+				const std::optional<UniformBufferObject::Dynamic> dynamic = std::get<indexSubset + first>(descriptorSets)->GetUBODynamic();
+				if(dynamic){
+					ret.push_back(uint32_t(dynamicOffsetNumbers[indexOfDynamic++] * dynamic->alignment));
+				}
+			}, ...);
+		}(std::make_integer_sequence<uint32_t, descriptorSetCount - number>{});
+		assert(ret.size() == dynamicOffsetNumbers.size());
+		return ret;
+	}
+	
 private:
 	std::shared_ptr<Devices> devices;
 	
@@ -362,6 +399,13 @@ private:
 	std::array<VkDescriptorSetLayout, descriptorSetCount> descriptorSetLayouts {};
 	std::array<VkDescriptorSet, descriptorSetCount * MAX_FRAMES_IN_FLIGHT> descriptorSetsFlying {};
 	VkDescriptorPool descriptorPool;
+	
+	template <uint32_t first, uint32_t number>
+	bool CheckDescriptorSetsValid() const {
+		return [&]<uint32_t... indexSubset>(std::integer_sequence<uint32_t, indexSubset...>) -> bool {
+			return (std::get<indexSubset + first>(descriptorSets).CheckDescriptorsValid() && ...);
+		}(std::make_integer_sequence<uint32_t, descriptorSetCount - number>{});
+	}
 };
 
 template <typename... uniformTs>
@@ -430,26 +474,25 @@ struct ShaderProgramBase<TypePack<pushConstantTs...>, UniformsT> {
 		vkCmdBindPipeline(commandBuffer, BindPoint(), pipeline);
 	}
 	// Set which descriptor sets are bound for subsequent render calls
-	void CmdBindDescriptorSets(VkCommandBuffer commandBuffer, int flight, int first=0, int number=0, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) const {
+	template <int first=0, int number=0>
+	bool CmdBindDescriptorSets(VkCommandBuffer commandBuffer, int flight, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) const {
+		constexpr uint32_t numberUse = std::conditional_t<number < 1, int(UniformsT::descriptorSetCount) - first, number>;
 		
-		if(number < 1){
-			number = int(UniformsT::descriptorSetCount) - first;
+		// making sure all descriptor sets are valid
+		if(!uniforms.UpdateDescriptorSets<first, numberUse>()){
+			return false;
 		}
-		if(!dynamicOffsetNumbers.empty()){
-			std::vector<uint32_t> theseDynamicOffsets {};
-			int indexOfDynamic = 0;
-			for(int i=first; i<first + number; ++i){
-				if(descriptorSets[i]->GetUBODynamic()){
-					theseDynamicOffsets.push_back((uint32_t)(dynamicOffsetNumbers[indexOfDynamic] * descriptorSets[i]->GetUBODynamicAlignment().value()));
-				}
-			}
-			assert(theseDynamicOffsets.size() == dynamicOffsetNumbers.size());
-			vkCmdBindDescriptorSets(commandBuffer, BindPoint(), layout, first, number, uniforms.DescriptorSetsStart(flight), uint32_t(dynamicOffsetNumbers.size()), theseDynamicOffsets.data());
+		
+		// binding, optionally using dynamic offsets
+		if(dynamicOffsetNumbers.empty()){
+			vkCmdBindDescriptorSets(commandBuffer, BindPoint(), layout, first, numberUse, &uniforms.DescriptorSetsStart(flight), 0, nullptr);
 		} else {
-			vkCmdBindDescriptorSets(commandBuffer, BindPoint(), layout, first, number, &uniforms.DescriptorSetsStart(flight), 0, nullptr);
+			const std::vector<uint32_t> dynamicOffsets = uniforms.GetDynamicOffsets<first, numberUse>(dynamicOffsetNumbers);
+			vkCmdBindDescriptorSets(commandBuffer, BindPoint(), layout, first, numberUse, uniforms.DescriptorSetsStart(flight), uint32_t(dynamicOffsets.size()), dynamicOffsets.data());
 		}
+		return true;
 	}
-	void UpdateDescriptorSets(uint32_t first=0); // have to do this every time any elements of any descriptors are changed, e.g. when an image view is re-created upon window resize
+	
 	// Set push constant data
 	template <uint32_t index>
 	void CmdPushConstants(VkCommandBuffer commandBuffer, IndexT<index, pushConstantTs...>::type *data){

@@ -9,6 +9,11 @@ class TextureSamplersDescriptor : public DescriptorBase<binding, stageFlags> {
 public:
 	TextureSamplersDescriptor() = default;
 	
+	void Set(std::array<std::shared_ptr<TextureSampler>, samplerCount> value){
+		samplers = std::move(value);
+		DescriptorBase<binding, stageFlags>::valid = false;
+	}
+	
 	static consteval VkDescriptorSetLayoutBinding LayoutBinding() {
 		return (VkDescriptorSetLayoutBinding){
 			.binding = binding,
@@ -33,6 +38,7 @@ public:
 			imageInfoBuffer[imageInfoBufferIndex].sampler = sampler->Handle();
 			imageInfoBufferIndex++;
 		}
+		
 		return (VkWriteDescriptorSet){
 			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
 			.dstSet = dstSet,

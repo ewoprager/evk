@@ -9,6 +9,11 @@ class StorageImagesDescriptor : public DescriptorBase<binding, stageFlags> {
 public:
 	StorageImagesDescriptor() = default;
 	
+	void Set(std::array<std::shared_ptr<TextureImage>, imageCount> value){
+		images = std::move(value);
+		DescriptorBase<binding, stageFlags>::valid = false;
+	}
+	
 	static consteval VkDescriptorSetLayoutBinding LayoutBinding() {
 		return (VkDescriptorSetLayoutBinding){
 			.binding = binding,

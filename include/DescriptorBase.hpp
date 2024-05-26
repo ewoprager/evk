@@ -11,11 +11,19 @@ struct DescriptorBase {
 	static constexpr uint32_t bindingValue = binding;
 	static constexpr VkShaderStageFlags stageFlagsValue = stageFlags;
 	
+	bool Valid() const { return valid; }
+	void SetValid(){ valid = true; }
+	
 //	static virtual consteval VkDescriptorSetLayoutBinding LayoutBinding() = 0;
 	
 	virtual std::optional<VkWriteDescriptorSet> DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const = 0;
 	
 //	static virtual consteval VkDescriptorPoolSize PoolSize() = 0;
+	
+	virtual std::optional<UniformBufferObject::Dynamic> GetUBODynamic() const { return {}; }
+	
+protected:
+	bool valid = false;
 };
 
 } // namespace EVK
