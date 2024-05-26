@@ -75,4 +75,4 @@ set_property(TARGET test PROPERTY CXX_STANDARD 20)
 
 target_link_libraries(test SDL2 mattresses vulkan evk)
 
-set_target_properties(test PROPERTIES OUTPUT_NAME evk)
+#set_target_properties(test PROPERTIES OUTPUT_NAME evk)

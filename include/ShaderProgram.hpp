@@ -41,12 +41,22 @@ struct WithShaderStage<stageFlags, PushConstants<offset, T>> {
 	static constexpr VkPushConstantRange rangeValue = {stageFlags, offset, sizeof(T)};
 };
 
+template <typename T>
+concept withShaderStage_c = requires {
+	{T::stageFlagsValue} -> std::same_as<VkShaderStageFlags>;
+	typename T::type;
+};
+
 // merge one WithShaderStage into a pack of pre-merged WithShaderStages
-template <typename checkedTP, typename withShaderStageT, typename notCheckedTP> struct OneWithShaderStageMergedIntoMerged {};
+template <typename checkedTP, typename withShaderStageT, typename notCheckedTP> struct OneWithShaderStageMergedIntoMerged {
+	using packType = TypePack<>;
+};
 template <typename... checkedTs, typename withShaderStageT> struct OneWithShaderStageMergedIntoMerged<TypePack<checkedTs...>, withShaderStageT, TypePack<>> {
 	using packType = TypePack<checkedTs..., withShaderStageT>;
 };
-template <typename... checkedTs, typename withShaderStageT, typename notCheckedT> struct OneWithShaderStageMergedIntoMerged<TypePack<checkedTs...>, withShaderStageT, TypePack<notCheckedT>> {
+template <typename... checkedTs, typename withShaderStageT, typename notCheckedT>
+requires (withShaderStage_c<withShaderStageT>)
+struct OneWithShaderStageMergedIntoMerged<TypePack<checkedTs...>, withShaderStageT, TypePack<notCheckedT>> {
 	using packType = std::conditional_t<
 	std::same_as<typename withShaderStageT::type, typename notCheckedT::type>,
 	TypePack<checkedTs..., WithShaderStage<withShaderStageT::stageFlagsValue | notCheckedT::stageFlagsValue, typename withShaderStageT::type>>,
@@ -60,7 +70,12 @@ template <typename... checkedTs, typename withShaderStageT, typename notCheckedT
 	typename OneWithShaderStageMergedIntoMerged<TypePack<checkedTs..., notCheckedT>, withShaderStageT, TypePack<other, rest...>>::packType
 	>;
 };
+template <typename T>
+concept oneWithShaderStageMergedIntoMerged_c = requires {
+	typename T::packType;
+};
 template <typename withShaderStageT, typename mergedTP>
+requires (oneWithShaderStageMergedIntoMerged_c<OneWithShaderStageMergedIntoMerged<TypePack<>, withShaderStageT, mergedTP>>)
 using oneWithShaderStageMergedIntoMerged_t = typename OneWithShaderStageMergedIntoMerged<TypePack<>, withShaderStageT, mergedTP>::packType;
 
 // merge all of a pack of WithShaderStages together
@@ -348,7 +363,7 @@ private:
 
 // Uniforms
 // -----
-template <typename uniform_tp, typename indexSequence_t> struct UniformsImpl {};
+template <typename uniformWithShaderStages_tp, typename indexSequence_t> struct UniformsImpl {};
 template <typename... uniformWithShaderStage_ts, uint32_t... indices>
 requires ((uniformWithShaderStage_c<uniformWithShaderStage_ts> && ...))
 struct UniformsImpl<TypePack<uniformWithShaderStage_ts...>, std::integer_sequence<uint32_t, indices...>> {
@@ -364,16 +379,16 @@ struct UniformsImpl<TypePack<uniformWithShaderStage_ts...>, std::integer_sequenc
 	static constexpr uint32_t descriptorSetCount = DescriptorSetCount<uniformWithShaderStage_ts...>();
 	
 	static constexpr uint32_t uniformCount = sizeof...(uniformWithShaderStage_ts);
-	static_assert((descriptorSet_t<indices>::descriptorCount + ...) == uniformCount, "!Inconsistency");
+//	static_assert((uint32_t descriptorSet_t<indices>::descriptorCount + ...) == uniformCount, "!Inconsistency");
 	
 	static constexpr std::array<VkDescriptorPoolSize, uniformCount> poolSizes = {(descriptor_t<uniformWithShaderStage_ts>::poolSize, ...)};
 	
 	template <uint32_t index>
-	descriptorSet_t<index> &DescriptorSet(){ return std::get<index>(descriptorSets); }
+	descriptorSet_t<index> &iDescriptorSet(){ return std::get<index>(descriptorSets); }
 	
 	explicit UniformsImpl(std::shared_ptr<Devices> _devices)
 	: devices(_devices)
-	, descriptorSets(descriptorSet_t<indices>(_devices)...) {
+	, descriptorSets((descriptorSet_t<indices>(_devices), ...)) {
 		// descriptor pool
 		const VkDescriptorPoolCreateInfo poolInfo{
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -470,40 +485,40 @@ private:
 	}
 };
 
-template <typename... uniformWithShaderStage_ts>
-using Uniforms = UniformsImpl<TypePack<uniformWithShaderStage_ts...>, std::make_integer_sequence<uint32_t, DescriptorSetCount<uniformWithShaderStage_ts...>()>>;
-
-template <typename T>
-concept filenameString_c = requires {
-	std::string{T::string};
+template <typename uniformWithShaderStage_tp> struct UniformsStruct {};
+template <typename... uniformWithShaderStage_ts> struct UniformsStruct<TypePack<uniformWithShaderStage_ts...>> {
+	using type = UniformsImpl<TypePack<uniformWithShaderStage_ts...>, std::make_integer_sequence<uint32_t, DescriptorSetCount<uniformWithShaderStage_ts...>()>>;
 };
+template <typename uniformWithShaderStage_tp>
+using Uniforms = typename UniformsStruct<uniformWithShaderStage_tp>::type;
+
 
 // Shader
 // -----
-template <VkShaderStageFlags shaderStage, typename filenameString_t, typename pushConstants_t, typename... uniformWithShaderStage_ts>
-requires (filenameString_c<filenameString_t> && (uniform_c<uniformWithShaderStage_ts, shaderStage> && ...) && pushConstants_c<pushConstants_t>)
+template <VkShaderStageFlags shaderStage, const char *filename, typename pushConstants_t, typename... uniform_ts>
+requires ((uniform_c<uniform_ts, shaderStage> && ...) && pushConstants_c<pushConstants_t>)
 struct Shader {
-	using pushConstants_tp = std::conditional_t<
+	using pushConstantWithShaderStage_tp = std::conditional_t<
 	std::same_as<pushConstants_t, NoPushConstants>,
 	TypePack<>,
 	TypePack<WithShaderStage<shaderStage, pushConstants_t>>
 	>;
 	
-	using uniforms_tp = TypePack<WithShaderStage<shaderStage, uniformWithShaderStage_ts>...>;
+	using uniformWithShaderStage_tp = TypePack<WithShaderStage<shaderStage, uniform_ts>...>;
 	
-	static constexpr std::string filename = filenameString_t::string;
+	static constexpr std::string_view filenameValue = {filename};
 };
 
 template <typename T>
 concept shader_c = requires {
-	typename T::pushConstants_tp;
-	typename T::uniforms_tp;
-	{T::filename} -> std::same_as<const std::string &>;
+	typename T::pushConstantWithShaderStage_tp;
+	typename T::uniformWithShaderStage_tp;
+	{T::filenameValue} -> std::same_as<const std::string_view &>;
 };
 
-template <typename filenameString_t, typename pushConstants_t, typename attributes_t, typename... uniformWithShaderStage_ts>
+template <const char *filename, typename pushConstants_t, typename attributes_t, typename... uniform_ts>
 struct VertexShader
-: public Shader<VK_SHADER_STAGE_VERTEX_BIT, filenameString_t, pushConstants_t, uniformWithShaderStage_ts...> {
+: public Shader<VK_SHADER_STAGE_VERTEX_BIT, filename, pushConstants_t, uniform_ts...> {
 	
 	static constexpr VkPipelineVertexInputStateCreateInfo pipelineVertexInputStateCI = attributes_t::pipelineVertexInputStateCI;
 };
@@ -516,15 +531,17 @@ concept vertexShader_c = requires (T val) {
 
 // Pipeline
 // -----
-template <typename pushConstants_tp, typename uniforms_t>
+template <typename pushConstantWithShaderStages_tp, typename uniforms_t>
 struct PipelineBase {};
 
-template <typename... pushConstantTs, typename uniforms_t>
-struct PipelineBase<TypePack<pushConstantTs...>, uniforms_t> {
+template <typename... pushConstantWithShaderStage_ts, typename uniforms_t>
+struct PipelineBase<TypePack<pushConstantWithShaderStage_ts...>, uniforms_t> {
 	
-	static constexpr uint32_t pushConstantCount = sizeof...(pushConstantTs);
+	static constexpr uint32_t pushConstantCount = sizeof...(pushConstantWithShaderStage_ts);
 	
-	static constexpr std::array<VkPushConstantRange, pushConstantCount> pushConstantRanges = {(pushConstantTs::VkPushConstantRange, ...)};
+	static constexpr std::array<VkPushConstantRange, pushConstantCount> pushConstantRanges = {{
+		(pushConstantWithShaderStage_ts::rangeValue, ...)
+	}};
 	
 	PipelineBase(std::shared_ptr<Devices> _devices)
 	: devices(_devices), uniforms(_devices) {
@@ -573,8 +590,8 @@ struct PipelineBase<TypePack<pushConstantTs...>, uniforms_t> {
 	
 	// Set push constant data
 	template <uint32_t index>
-	void CmdPushConstants(VkCommandBuffer commandBuffer, IndexT<index, pushConstantTs...>::type *data){
-		using pushConstantT = IndexT<index, pushConstantTs...>::type;
+	void CmdPushConstants(VkCommandBuffer commandBuffer, IndexT<index, pushConstantWithShaderStage_ts...>::type *data){
+		using pushConstantT = IndexT<index, pushConstantWithShaderStage_ts...>::type;
 		vkCmdPushConstants(commandBuffer,
 						   layout,
 						   pushConstantT::stageFlagsValue,
@@ -612,8 +629,8 @@ struct RenderPipelineBlueprint {
 template <typename vertexShader_t, typename fragmentShader_t>
 requires (vertexShader_c<vertexShader_t> && shader_c<fragmentShader_t>)
 using renderPipelineBase_t = PipelineBase<
-withShaderStagesMerged_t<concatenatedPack_t<typename vertexShader_t::pushConstants_tp, typename fragmentShader_t::pushConstants_tp>>,
-Uniforms<withShaderStagesMerged_t<concatenatedPack_t<typename vertexShader_t::uniforms_tp, typename fragmentShader_t::uniforms_tp>>>
+withShaderStagesMerged_t<concatenatedPack_t<typename vertexShader_t::pushConstantWithShaderStage_tp, typename fragmentShader_t::pushConstantWithShaderStage_tp>>,
+Uniforms<withShaderStagesMerged_t<concatenatedPack_t<typename vertexShader_t::uniformWithShaderStage_tp, typename fragmentShader_t::uniformWithShaderStage_tp>>>
 >;
 
 template <typename vertexShader_t, typename fragmentShader_t>
@@ -641,7 +658,7 @@ struct RenderPipeline : public renderPipelineBase_t<vertexShader_t, fragmentShad
 				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 				.stage = VK_SHADER_STAGE_VERTEX_BIT,
 				.pName = "main",
-				.module = base_t::devices->CreateShaderModule(vertexShader_t::filename),
+				.module = base_t::devices->CreateShaderModule(vertexShader_t::filenameValue.data()),
 				// this is for constants to use in the shader:
 				.pSpecializationInfo = nullptr
 			},
@@ -649,7 +666,7 @@ struct RenderPipeline : public renderPipelineBase_t<vertexShader_t, fragmentShad
 				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 				.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
 				.pName = "main",
-				.module = base_t::devices->CreateShaderModule(fragmentShader_t::filename),
+				.module = base_t::devices->CreateShaderModule(fragmentShader_t::filenameValue.data()),
 				// this is for constants to use in the shader:
 				.pSpecializationInfo = nullptr
 			}

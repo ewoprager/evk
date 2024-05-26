@@ -117,6 +117,7 @@ public:
 	
 	
 	// ----- Getters -----
+	const VkRenderPass &GetRenderPassHandle() const { return renderPass; }
 	const uint32_t &GetExtentWidth() const { return swapChainExtent.width; }
 	const uint32_t &GetExtentHeight() const { return swapChainExtent.height; }
 //	bool GetVertexBufferCreated(int index) const { return (bool)vertexBufferObjects[index]; }
