@@ -39,11 +39,9 @@ template <typename... Ts, typename... Us> struct ConcatenatedPack<TypePack<Ts...
 template<typename... Ts, typename... Us, typename... Rest> struct ConcatenatedPack<TypePack<Ts...>, TypePack<Us...>, Rest...> {
 	using type = typename ConcatenatedPack<TypePack<Ts..., Us...>, Rest...>::type;
 };
-template <typename... Ts> using ConcatenatedPack_t = typename ConcatenatedPack<Ts...>::type;
+template <typename... Ts> using concatenatedPack_t = typename ConcatenatedPack<Ts...>::type;
 
 template <uint32_t index, typename... Ts> using IndexT = std::tuple_element<index, std::tuple<Ts...>>;
-
-template <typename... Ts> consteval uint32_t CountT() { return std::tuple_size<std::tuple<Ts...>>::value; }
 
 template <uint32_t integer, uint32_t... integers> consteval bool Contains(){
 	return ((integer == integers) || ...);

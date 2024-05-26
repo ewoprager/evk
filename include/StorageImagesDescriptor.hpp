@@ -14,15 +14,13 @@ public:
 		DescriptorBase<binding, stageFlags>::valid = false;
 	}
 	
-	static consteval VkDescriptorSetLayoutBinding LayoutBinding() {
-		return (VkDescriptorSetLayoutBinding){
-			.binding = binding,
-			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-			.descriptorCount = imageCount,
-			.stageFlags = stageFlags,
-			.pImmutableSamplers = nullptr
-		};
-	}
+	static constexpr VkDescriptorSetLayoutBinding layoutBinding = {
+		.binding = binding,
+		.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+		.descriptorCount = imageCount,
+		.stageFlags = stageFlags,
+		.pImmutableSamplers = nullptr
+	};
 	
 	std::optional<VkWriteDescriptorSet> DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const override {
 		for(std::shared_ptr<TextureImage> image : images){
@@ -49,12 +47,10 @@ public:
 		};
 	}
 	
-	static consteval VkDescriptorPoolSize PoolSize() {
-		return (VkDescriptorPoolSize){
-			.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-			.descriptorCount = imageCount * MAX_FRAMES_IN_FLIGHT
-		};
-	}
+	static constexpr VkDescriptorPoolSize poolSize = {
+		.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+		.descriptorCount = imageCount * MAX_FRAMES_IN_FLIGHT
+	};
 	
 private:
 	std::array<std::shared_ptr<TextureImage>, imageCount> images {};

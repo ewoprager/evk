@@ -14,11 +14,11 @@ struct DescriptorBase {
 	bool Valid() const { return valid; }
 	void SetValid(){ valid = true; }
 	
-//	static virtual consteval VkDescriptorSetLayoutBinding LayoutBinding() = 0;
+//	static virtual constexpr VkDescriptorSetLayoutBinding layoutBinding = 0;
 	
 	virtual std::optional<VkWriteDescriptorSet> DescriptorWrite(const VkDescriptorSet &dstSet, VkDescriptorImageInfo *imageInfoBuffer, int &imageInfoBufferIndex, VkDescriptorBufferInfo *bufferInfoBuffer, int &bufferInfoBufferIndex, int flight) const = 0;
 	
-//	static virtual consteval VkDescriptorPoolSize PoolSize() = 0;
+//	static virtual constexpr VkDescriptorPoolSize poolSize = 0;
 	
 	virtual std::optional<UniformBufferObject::Dynamic> GetUBODynamic() const { return {}; }
 	
