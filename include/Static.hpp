@@ -41,7 +41,7 @@ template<typename... Ts, typename... Us, typename... Rest> struct ConcatenatedPa
 };
 template <typename... Ts> using concatenatedPack_t = typename ConcatenatedPack<Ts...>::type;
 
-template <uint32_t index, typename... Ts> using IndexT = std::tuple_element<index, std::tuple<Ts...>>;
+template <uint32_t index, typename... Ts> using index_t = typename std::tuple_element<index, std::tuple<Ts...>>::type;
 
 template <uint32_t integer, uint32_t... integers> consteval bool Contains(){
 	return ((integer == integers) || ...);

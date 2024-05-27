@@ -452,7 +452,7 @@ void Interface::CleanUpSwapChain(){
 	}
 }
 
-std::optional<VkCommandBuffer> Interface::BeginFrame(){
+std::optional<Interface::FrameInfo> Interface::BeginFrame(){
 	// waiting until previous frame has finished rendering
 	vkWaitForFences(devices->GetLogicalDevice(), 1, &inFlightFencesFlying[currentFrame], VK_TRUE, UINT64_MAX);
 	
@@ -464,7 +464,9 @@ std::optional<VkCommandBuffer> Interface::BeginFrame(){
 		framebufferResized = false;
 		RecreateSwapChain();
 		return {};
-	} else if(result != VK_SUCCESS) throw std::runtime_error("failed to acquire swap chain image!");
+	} else if(result != VK_SUCCESS){
+		throw std::runtime_error("failed to acquire swap chain image!");
+	}
 	
 	// only reset the fence if we are submitting work
 	vkResetFences(devices->GetLogicalDevice(), 1, &inFlightFencesFlying[currentFrame]);
@@ -481,7 +483,7 @@ std::optional<VkCommandBuffer> Interface::BeginFrame(){
 		throw std::runtime_error("failed to begin recording command buffer!");
 	}
 	
-	return commandBuffersFlying[currentFrame];
+	return FrameInfo{commandBuffersFlying[currentFrame], currentFrame};
 }
 void Interface::BeginFinalRenderPass(const VkClearColorValue &clearColour){
 	VkClearValue clearValues[2] = {};

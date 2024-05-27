@@ -490,7 +490,7 @@ void Devices::CreateImage(const VkImageCreateInfo &imageCI, /*uint32_t width, ui
 	 vkBindImageMemory(logicalDevice, image, imageMemory, 0);
 	 */
 	
-	VmaAllocationCreateInfo allocInfo = {
+	const VmaAllocationCreateInfo allocInfo = {
 		.usage = VMA_MEMORY_USAGE_AUTO,
 		.requiredFlags = properties,
 		.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,

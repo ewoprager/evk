@@ -12,7 +12,9 @@ public:
 	static constexpr uint32_t bindingValue = binding;
 	static constexpr VkShaderStageFlags stageFlagsValue = stageFlags;
 	
-	bool Valid() const { return valid; }
+	bool Valid() const {
+		return valid;
+	}
 	void SetValid(){ valid = true; }
 	
 //	static virtual constexpr VkDescriptorSetLayoutBinding layoutBinding = 0;

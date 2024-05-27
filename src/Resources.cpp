@@ -172,7 +172,8 @@ TextureImage::TextureImage(std::shared_ptr<Devices> _devices, Data3DImageBluepri
 		.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}
 	});
 	
-	blueprint = {imageCI, VK_IMAGE_VIEW_TYPE_3D, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_IMAGE_ASPECT_COLOR_BIT};
+	extent = imageCI.extent;
+	format = imageCI.format;
 }
 TextureImage::TextureImage(std::shared_ptr<Devices> _devices, CubemapPNGImageBlueprint fromPNGCubemaps)
 : devices(std::move(_devices)) {
@@ -268,7 +269,8 @@ TextureImage::TextureImage(std::shared_ptr<Devices> _devices, CubemapPNGImageBlu
 		.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 6}
 	});
 	
-	// no blueprint as a cube map can't resize with the window
+	extent = imageCI.extent;
+	format = imageCI.format;
 }
 TextureImage::TextureImage(std::shared_ptr<Devices> _devices, ManualImageBlueprint fromBlueprint)
 : devices(std::move(_devices)) {
@@ -333,28 +335,26 @@ void TextureImage::ConstructFromData(DataImageBlueprint _blueprint){
 		.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, mipLevels, 0, 1}
 	});
 	
-	blueprint = {imageCI, VK_IMAGE_VIEW_TYPE_2D, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_IMAGE_ASPECT_COLOR_BIT};
+	extent = imageCI.extent;
+	format = imageCI.format;
 }
 void TextureImage::ConstructManual(ManualImageBlueprint _blueprint){
-//	if(blueprint.imageCI.extent.width == 0 || blueprint.imageCI.extent.height == 0 || blueprint.imageCI.extent.depth == 0){
-//		blueprint.imageCI.extent.width = swapChainExtent.width;
-//		blueprint.imageCI.extent.height = swapChainExtent.height;
-//		blueprint.imageCI.extent.depth = 1;
-//	}
-	blueprint = _blueprint;
 	
-	devices->CreateImage(blueprint.imageCI, blueprint.properties, image, allocation);
+	devices->CreateImage(_blueprint.imageCI, _blueprint.properties, image, allocation);
 	
 	view = devices->CreateImageView({
 		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
 		.pNext = nullptr,
 		.flags = 0,
 		.image = image,
-		.viewType = blueprint.imageViewType,
-		.format = blueprint.imageCI.format,
+		.viewType = _blueprint.imageViewType,
+		.format = _blueprint.imageCI.format,
 		.components = {},
-		.subresourceRange = {blueprint.aspectFlags, 0, blueprint.imageCI.mipLevels, 0, blueprint.imageCI.arrayLayers}
+		.subresourceRange = {_blueprint.aspectFlags, 0, _blueprint.imageCI.mipLevels, 0, _blueprint.imageCI.arrayLayers}
 	});
+	
+	extent = _blueprint.imageCI.extent;
+	format = _blueprint.imageCI.format;
 }
 
 TextureSampler::TextureSampler(std::shared_ptr<Devices> _devices,
@@ -367,12 +367,12 @@ TextureSampler::TextureSampler(std::shared_ptr<Devices> _devices,
 }
 
 BufferedRenderPass::BufferedRenderPass(std::shared_ptr<Devices> _devices,
-									   const VkRenderPassCreateInfo &renderPassCI)
+									   const VkRenderPassCreateInfo *const pRenderPassCI)
 : devices(std::move(_devices)) {
 	
 //	size = std::optional<vec<2, uint32_t>>();
 	
-	if(vkCreateRenderPass(devices->GetLogicalDevice(), &renderPassCI, nullptr, &renderPass) != VK_SUCCESS){
+	if(vkCreateRenderPass(devices->GetLogicalDevice(), pRenderPassCI, nullptr, &renderPass) != VK_SUCCESS){
 		throw std::runtime_error("Failed to create render pass!");
 	}
 	

@@ -85,7 +85,11 @@ public:
 	// ----- General commands -----
 //	void CmdPipelineImageMemoryBarrier(bool graphicsOrCompute, int imageIndex, VkPipelineStageFlags srcStageMask, VkPipelineStageFlags dstStageMask, VkDependencyFlags dependencyFlags, VkAccessFlags srcAccessMask, VkAccessFlags dstAccessMask, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t srcQueueFamilyIndex, uint32_t dstQueueFamilyIndex, VkImageSubresourceRange subresourceRange);
 	// ----- Graphics commands -----
-	std::optional<VkCommandBuffer> BeginFrame();
+	struct FrameInfo {
+		VkCommandBuffer cb;
+		uint32_t frame;
+	};
+	std::optional<FrameInfo> BeginFrame();
 //	void CmdBeginBufferedRenderPass(int bufferedRenderPassIndex, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues);
 //	void CmdBeginLayeredBufferedRenderPass(int layeredBufferedRenderPassIndex, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues, int layer);
 	void CmdEndRenderPass();

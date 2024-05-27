@@ -15,22 +15,17 @@ struct Vertex {
 	vec<3, float32_t> colour;
 };
 
-namespace MainInstancedPipeline {
+namespace Pipeline {
 
 namespace VertexShader {
 
-//struct Filename { static constexpr std::string string; };
-//constexpr std::string Filename::string = "Hello";
-//static_assert(EVK::filenameString_c<Filename>);
-
 static constexpr char vertexFilename[] = "../Shaders/vert.spv";
 
-//struct PushConstantType {
-//	int placeHolder;
-//};
-
-//using PCS = EVK::PushConstants<0, PushConstantType>;
-//static_assert(EVK::pushConstants_c<PCS>);
+struct PushConstantType {
+	mat<4, 4> projViewModel;
+};
+using PCS = EVK::PushConstants<0, PushConstantType>;
+static_assert(EVK::pushConstants_c<PCS>);
 
 using Attributes = EVK::Attributes<EVK::BindingDescriptionPack<
 VkVertexInputBindingDescription{
@@ -45,10 +40,9 @@ VkVertexInputAttributeDescription{
 VkVertexInputAttributeDescription{
 	1, 0, VK_FORMAT_R32G32B32_SFLOAT, 8
 }
->
->;
+>>;
 
-using type = EVK::VertexShader<vertexFilename, EVK::NoPushConstants, Attributes
+using type = EVK::VertexShader<vertexFilename, PCS, Attributes
 //, EVK::UBOUniform<0, 0, false>
 >;
 
@@ -57,11 +51,6 @@ static_assert(EVK::vertexShader_c<type>);
 } // namespace VertexShader
 
 namespace FragmentShader {
-
-//struct Filename { static constexpr std::string string; };
-//const std::string Filename::string = "Hello";
-//static_assert(EVK::filenameString_c<Filename>);
-
 
 static constexpr char fragmentFilename[] = "../Shaders/frag.spv";
 
@@ -78,9 +67,13 @@ static constexpr char fragmentFilename[] = "../Shaders/frag.spv";
 
 //static_assert(EVK::pushConstantWithShaderStage_c<EVK::WithShaderStage<VK_SHADER_STAGE_FRAGMENT_BIT, PCS>>);
 
+struct UBO {
+	float redOffset;
+};
+
 using type = EVK::Shader<VK_SHADER_STAGE_FRAGMENT_BIT, fragmentFilename, EVK::NoPushConstants
+, EVK::UBOUniform<0, 0, false>
 //,
-//EVK::UBOUniform<0, 0, false>,
 //EVK::TextureSamplersUniform<0, 1, 1>,
 //EVK::TextureImagesUniform<0, 2, PNGS_N>,
 //EVK::CombinedImageSamplersUniform<0, 3, 1>
@@ -91,24 +84,25 @@ static_assert(EVK::shader_c<type>);
 
 using type = EVK::RenderPipeline<VertexShader::type, FragmentShader::type>;
 
-EVK::RenderPipelineBlueprint Blueprint(VkRenderPass renderPassHandle){
+std::shared_ptr<type> Build(std::shared_ptr<EVK::Devices> devices, VkRenderPass renderPassHandle){
+	
 	VkPipelineRasterizationStateCreateInfo rasterizer{};
 	rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 	rasterizer.depthClampEnable = VK_FALSE;
 	
 	//If depthClampEnable is set to VK_TRUE, then fragments that are beyond the near and far planes are clamped to them as opposed to discarding them. This is useful in some special cases like shadow maps.
-	
+	 
 	//Using this requires enabling a GPU feature.
 	
 	rasterizer.rasterizerDiscardEnable = VK_FALSE;
 	rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
 	
 	//The polygonMode determines how fragments are generated for geometry. The following modes are available:
-	
+	 
 	//VK_POLYGON_MODE_FILL: fill the area of the polygon with fragments
 	//VK_POLYGON_MODE_LINE: polygon edges are drawn as lines
 	//VK_POLYGON_MODE_POINT: polygon vertices are drawn as points
-	
+	 
 	//Using any mode other than fill requires enabling a GPU feature.
 	
 	rasterizer.lineWidth = 1.0f;
@@ -188,35 +182,37 @@ EVK::RenderPipelineBlueprint Blueprint(VkRenderPass renderPassHandle){
 	//dynamicState.dynamicStateCount = 2;
 	dynamicState.pDynamicStates = dynamicStates;
 	
-	rasterizer.cullMode = VK_CULL_MODE_NONE;//VK_CULL_MODE_BACK_BIT;
+	rasterizer.cullMode = VK_CULL_MODE_NONE;
 	rasterizer.depthBiasEnable = VK_FALSE;
-	colourBlending.attachmentCount = 1;
-	depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
-	dynamicState.dynamicStateCount = 2;
 #ifdef MSAA
-	multisampling.rasterizationSamples = interface->devices.GetMSAASamples();
+	multisampling.rasterizationSamples = devices.GetMSAASamples();
 #else
 	multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 #endif
+	colourBlending.attachmentCount = 1;
+	depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+	dynamicState.dynamicStateCount = 2;
 	
-	return EVK::RenderPipelineBlueprint{
+	const type::Blueprint blueprint = {
 		.primitiveTopology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-		.rasterisationStateCI = rasterizer,
-		.multisampleStateCI = multisampling,
-		.depthStencilStateCI = depthStencil,
-		.colourBlendStateCI = colourBlending,
-		.dynamicStateCI = dynamicState,
+		.pRasterisationStateCI = &rasterizer,
+		.pMultisampleStateCI = &multisampling,
+		.pDepthStencilStateCI = &depthStencil,
+		.pColourBlendStateCI = &colourBlending,
+		.pDynamicStateCI = &dynamicState,
 		.renderPassHandle = renderPassHandle
 	};
+	
+	return std::make_shared<type>(devices, &blueprint);
 }
 
-} // namespace MainInstancedPipeline
+} // namespace Pipeline
 
-const std::array<Vertex, 3> vertices = {{
-	{{ 0.0f, 0.5f}, {1.0f, 0.0f, 0.0f}},
-	{{ 0.5f,-0.5f}, {0.0f, 1.0f, 0.0f}},
-	{{-0.5f,-0.5f}, {0.0f, 0.0f, 1.0f}}
-}};
+const Vertex vertices[3] = {
+	{{ 0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}},
+	{{ 1.0f,-1.0f}, {0.0f, 1.0f, 0.0f}},
+	{{-1.0f,-1.0f}, {0.0f, 0.0f, 1.0f}}
+};
 
 int main(int argc, char *argv[]){
 	std::cout << "Hello, World!\n";
@@ -249,33 +245,72 @@ int main(int argc, char *argv[]){
 	
 	std::shared_ptr<EVK::Interface> interface = std::make_shared<EVK::Interface>(devices);
 	
-	std::shared_ptr<MainInstancedPipeline::type> mainInstancedPipeline = std::make_shared<MainInstancedPipeline::type>(devices, MainInstancedPipeline::Blueprint(interface->GetRenderPassHandle()));
+	std::shared_ptr<Pipeline::type> mainInstancedPipeline = Pipeline::Build(devices, interface->GetRenderPassHandle());
 	
 	std::shared_ptr<EVK::VertexBufferObject> vbo = std::make_shared<EVK::VertexBufferObject>(devices);
 	
-	vbo->Fill((void *)(vertices.data()), sizeof(vertices), 0);
+	vbo->Fill((void *)(vertices), sizeof(vertices), 0);
+	
+	const std::function<mat<4, 4>()> projFunction = [&]() -> mat<4, 4> {
+		return mat<4, 4>::PerspectiveProjection(M_PI*0.25f, (float)interface->GetExtentWidth() / (float)interface->GetExtentHeight(), 0.1f, 10.0f);
+	};
+	
+	const std::function<mat<4, 4>(const vec<3> &, const vec<3> &)> viewFunction = [&](const vec<3> &cameraPosition, const vec<3> &cameraRPY) -> mat<4, 4> {
+		const mat<4, 4> camera = mat<4, 4>::Translation(cameraPosition) & mat<4, 4>::YRotation(cameraRPY.z) & mat<4, 4>::XRotation(cameraRPY.y) & mat<4, 4>::ZRotation(cameraRPY.x);
+		return camera.Inverted();
+	};
+	
+	const float spinSpeed = 0.4f;
+	
+	const std::function<mat<4, 4>(float)> modelFunction = [&](float timeS) -> mat<4, 4> {
+		return mat<4, 4>::YRotation(spinSpeed * timeS);
+	};
+	
+	const std::function<Pipeline::VertexShader::PushConstantType(float)> pcsFunction = [&](float timeS) -> Pipeline::VertexShader::PushConstantType {
+		return {
+			projFunction() & viewFunction(vec<3>{0.0f, 0.0f, 5.0f}, vec<3>{0.0f, -0.01f, 0.0f}) & modelFunction(timeS)
+		};
+	};
+	
+	std::shared_ptr<EVK::UniformBufferObject> ubo = std::make_shared<EVK::UniformBufferObject>(devices, sizeof(Pipeline::FragmentShader::UBO));
+	
+	mainInstancedPipeline->iDescriptorSet<0>().iDescriptor<0>().Set(ubo);
+	
+	const std::function<void(float, uint32_t)> updateFunction = [&](float timeS, uint32_t flight) {
+		ubo->GetDataPointer<Pipeline::FragmentShader::UBO>(flight)->redOffset = 2.0f * sin(timeS);
+	};
 	
 	int time = SDL_GetTicks();
 	
 	while(!ESDL::HandleEvents()){
 		const int newTime = SDL_GetTicks();
-		const float dT = 0.001f*(float)(newTime - time);
+//		const float dT = 0.001f*(float)(newTime - time);
 		time = newTime;
 		
-		if(std::optional<VkCommandBuffer> cb = interface->BeginFrame(); cb){
-			interface->BeginFinalRenderPass({{1.0f, 1.0f, 1.0f, 1.0f}});
+		const float timeS = 0.001f * static_cast<float>(time);
+		
+		if(std::optional<EVK::Interface::FrameInfo> fi = interface->BeginFrame(); fi.has_value()){
+			updateFunction(timeS, fi->frame);
 			
-			mainInstancedPipeline->CmdBind(cb.value());
-			if(vbo->CmdBind(cb.value(), 0)){
+			interface->BeginFinalRenderPass({{0.01f, 0.01f, 0.01f, 1.0f}});
+			
+			mainInstancedPipeline->CmdBind(fi->cb);
+			if(mainInstancedPipeline->CmdBindDescriptorSets<0, 1>(fi->cb, fi->frame) && vbo->CmdBind(fi->cb, 0)){
+				Pipeline::VertexShader::PushConstantType pcs = pcsFunction(timeS);
+				mainInstancedPipeline->CmdPushConstants<0>(fi->cb, &pcs);
 				interface->CmdDraw(3);
 			} else {
 				std::cout << "Failing to draw.\n";
 			}
 			
 			interface->EndFinalRenderPassAndFrame();
+		} else {
+			std::cout << "Failed to begin frame.\n";
 		}
 		
 	}
+	
+	std::cout << "Exiting.\n";
 	
 	SDL_DestroyWindow(window);
 	

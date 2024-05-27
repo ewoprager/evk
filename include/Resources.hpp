@@ -178,7 +178,7 @@ struct CubemapPNGImageBlueprint {
 	std::array<std::string, 6> imageFilenames;
 };
 struct ManualImageBlueprint {
-	VkImageCreateInfo imageCI; // is this safe? given that we pass these around
+	VkImageCreateInfo imageCI;
 	VkImageViewType imageViewType;
 	VkMemoryPropertyFlags properties;
 	VkImageAspectFlags aspectFlags;
@@ -216,8 +216,8 @@ public:
 	}
 	
 	VkImageView View() const { return view; }
-	const VkExtent3D &Extent() const { return blueprint.imageCI.extent; }
-	VkFormat Format() const { return blueprint.imageCI.format; }
+	const VkExtent3D &Extent() const { return extent; }
+	VkFormat Format() const { return format; }
 	VkImage Image() const { return image; }
 	
 private:
@@ -227,7 +227,8 @@ private:
 	VmaAllocation allocation;
 	VkImageView view;
 	uint32_t mipLevels;
-	ManualImageBlueprint blueprint;
+	VkExtent3D extent;
+	VkFormat format;
 	
 	void ConstructFromData(DataImageBlueprint _blueprint);
 	void ConstructManual(ManualImageBlueprint _blueprint);
@@ -252,7 +253,7 @@ private:
 class BufferedRenderPass {
 public:
 	BufferedRenderPass(std::shared_ptr<Devices> _devices,
-					   const VkRenderPassCreateInfo &renderPassCI);
+					   const VkRenderPassCreateInfo *const pRenderPassCI);
 	~BufferedRenderPass(){
 		CleanUpTargets();
 		vkDestroyRenderPass(devices->GetLogicalDevice(), renderPass, nullptr);
@@ -321,12 +322,12 @@ template <uint32_t layersN>
 class LayeredBufferedRenderPass {
 public:
 	LayeredBufferedRenderPass(std::shared_ptr<Devices> _devices,
-							  const VkRenderPassCreateInfo &renderPassCI,
-							  const VkImageAspectFlags &_imageAspectFlags)
+							  const VkRenderPassCreateInfo *const pRenderPassCI,
+							  VkImageAspectFlags _imageAspectFlags)
 		: devices(std::move(_devices))
-		, imageAspectFlags(_imageAspectFlags) {
+		, imageAspectFlags(std::move(_imageAspectFlags)) {
 			
-		if(vkCreateRenderPass(devices->GetLogicalDevice(), &renderPassCI, nullptr, &renderPass) != VK_SUCCESS){
+		if(vkCreateRenderPass(devices->GetLogicalDevice(), pRenderPassCI, nullptr, &renderPass) != VK_SUCCESS){
 			throw std::runtime_error("Failed to create render pass!");
 		}
 	}
