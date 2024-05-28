@@ -553,12 +553,12 @@ public:
 		std::vector<uint32_t> ret {};
 		int indexOfDynamic = 0;
 		[&]<uint32_t... indexSubset>(std::integer_sequence<uint32_t, indexSubset...>){
-			(void([&](){
+			([&](){
 				const std::optional<VkDeviceSize> dynamicAlignment = std::get<indexSubset + first>(descriptorSets).GetUBODynamicAlignment();
 				if(dynamicAlignment){
 					ret.push_back(uint32_t(dynamicOffsetNumbers[indexOfDynamic++] * dynamicAlignment.value()));
 				}
-			}), ...);
+			}(), ...);
 		}(std::make_integer_sequence<uint32_t, number>{});
 //		assert(ret.size() == dynamicOffsetNumbers.size());
 		return ret;
