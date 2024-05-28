@@ -21,8 +21,8 @@ public:
 	Interface(std::shared_ptr<Devices> _devices);
 	~Interface();
 	
-	void SetResizeCallback(std::function<void(const vec<2, uint32_t> &)> newValue){
-		resizeCallback = std::move(newValue);
+	void SetResizeCallback(const std::function<void(const vec<2, uint32_t> &)> &newValue){
+		resizeCallback = newValue;
 	}
 	
 	// -----------------

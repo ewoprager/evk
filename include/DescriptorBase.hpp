@@ -23,7 +23,7 @@ public:
 	
 //	static virtual constexpr VkDescriptorPoolSize poolSize = 0;
 	
-	virtual std::optional<UniformBufferObject::Dynamic> GetUBODynamic() const { return {}; }
+	virtual std::optional<DynamicUBOInfo> GetUBODynamic() const { return {}; }
 	
 protected:
 	bool valid = false;

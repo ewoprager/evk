@@ -8,6 +8,8 @@ template <uint32_t binding, VkShaderStageFlags stageFlags>
 class SBODescriptor : public DescriptorBase<binding, stageFlags> {
 public:
 	using DescriptorBase = typename SBODescriptor::DescriptorBase;
+	static constexpr uint32_t bindingValue = binding;
+	static constexpr VkShaderStageFlags stageFlagsValue = stageFlags;
 	
 	SBODescriptor() = default;
 	

@@ -4,14 +4,16 @@
 
 namespace EVK {
 
-template <uint32_t binding, VkShaderStageFlags stageFlags, bool dynamic>
+template <uint32_t binding, VkShaderStageFlags stageFlags, typename T, bool dynamic>
 class UBODescriptor : public DescriptorBase<binding, stageFlags> {
 public:
 	using DescriptorBase = typename UBODescriptor::DescriptorBase;
+	static constexpr uint32_t bindingValue = binding;
+	static constexpr VkShaderStageFlags stageFlagsValue = stageFlags;
 	
 	UBODescriptor() = default;
 	
-	void Set(std::shared_ptr<UniformBufferObject> value){
+	void Set(std::shared_ptr<UniformBufferObject<T, dynamic>> value){
 		object = std::move(value);
 		DescriptorBase::valid = false;
 	}
@@ -49,7 +51,7 @@ public:
 		.descriptorCount = 1 * MAX_FRAMES_IN_FLIGHT
 	};
 	
-	std::optional<UniformBufferObject::Dynamic> GetUBODynamic() const override {
+	std::optional<DynamicUBOInfo> GetUBODynamic() const override {
 		if(!object){
 			std::cout << "Cannot get if UBO is dynamic; no object.\n";
 			return {};
@@ -58,7 +60,7 @@ public:
 	}
 	
 private:
-	std::shared_ptr<UniformBufferObject> object {};
+	std::shared_ptr<UniformBufferObject<T, dynamic>> object {};
 };
 
 } // namespace EVK

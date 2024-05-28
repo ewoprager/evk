@@ -17,7 +17,7 @@ public:
 	
 	bool Filled() const { return contents.has_value(); }
 	
-	void Fill(void *vertices, const VkDeviceSize &size, const VkDeviceSize &offset);
+	void Fill(void *vertices, const VkDeviceSize &size, const VkDeviceSize &offset=0);
 	
 	bool CmdBind(VkCommandBuffer commandBuffer, uint32_t binding){
 		if(!contents){
@@ -51,7 +51,7 @@ public:
 	
 	bool Filled() const { return contents.has_value(); }
 	
-	void Fill(uint32_t *indices, size_t indexCount, const VkDeviceSize &offset);
+	void Fill(uint32_t *indices, size_t indexCount, const VkDeviceSize &offset=0);
 	
 	bool CmdBind(VkCommandBuffer commandBuffer, VkIndexType type){
 		if(!contents){
@@ -60,6 +60,11 @@ public:
 		}
 		vkCmdBindIndexBuffer(commandBuffer, contents->bufferHandle, contents->offset, type);
 		return true;
+	}
+	
+	std::optional<uint32_t> GetIndexCount() const {
+		return contents ? contents->indexCount : std::optional<uint32_t>();
+		
 	}
 	
 private:
@@ -76,14 +81,42 @@ private:
 	void CleanUpContents();
 };
 
+
+struct DynamicUBOInfo {
+	uint32_t repeatsN;
+	VkDeviceSize alignment;
+};
+
+template <typename T, bool dynamic=false>
 class UniformBufferObject {
 public:
-	struct Dynamic {
-		int repeatsN;
-		VkDeviceSize alignment;
-	};
-	
-	UniformBufferObject(std::shared_ptr<Devices> _devices, VkDeviceSize _size, std::optional<Dynamic> _dynamic=std::optional<Dynamic>());
+	UniformBufferObject(std::shared_ptr<Devices> _devices, uint32_t dynamicRepeats=1)
+	: devices(std::move(_devices)) {
+		if(dynamicRepeats < 1){
+			throw std::runtime_error("UBO dynamic repeats cannot be zero.");
+		}
+		if constexpr (dynamic){
+			// Calculate required alignment based on minimum device offset alignment
+			const VkDeviceSize minUboAlignment = devices->GetPhysicalDeviceProperties().limits.minUniformBufferOffsetAlignment;
+			
+			dynamicInfo = DynamicUBOInfo{
+				.repeatsN = dynamicRepeats,
+				.alignment = minUboAlignment > 0 ? (sizeof(T) + minUboAlignment - 1) & ~(minUboAlignment - 1) : sizeof(T)
+			};
+			size = dynamicInfo->alignment * dynamicInfo->repeatsN;
+		} else { // not dynamic
+			dynamicInfo.reset();
+			size = sizeof(T);
+		}
+		for(size_t i=0; i<MAX_FRAMES_IN_FLIGHT; ++i){
+			devices->CreateBuffer(size,
+								  VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+								  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+								  buffersFlying[i],
+								  allocationsFlying[i],
+								  &(allocationInfosFlying[i]));
+		}
+	}
 	~UniformBufferObject(){
 		for(int i=0; i<MAX_FRAMES_IN_FLIGHT; i++){
 			vmaDestroyBuffer(devices->GetAllocator(), buffersFlying[i], allocationsFlying[i]);
@@ -91,27 +124,27 @@ public:
 	}
 	
 	// ----- Modifying UBO data -----
-	template <typename T> T *GetDataPointer(uint32_t flight) const {
-		return (T *)allocationInfosFlying[flight].pMappedData;
+	T *GetDataPointer(uint32_t flight) const {
+		return static_cast<T *>(allocationInfosFlying[flight].pMappedData);
 	}
-	template <typename T> std::vector<T *> GetDataPointers(uint32_t flight) const {
+	std::vector<T *> GetDataPointers(uint32_t flight) const {
 		std::vector<T *> ret {};
-		if(dynamic){
-			ret.resize(dynamic->repeatsN);
-			uint8_t *start = (uint8_t *)allocationInfosFlying[flight].pMappedData;
+		if constexpr (dynamic){
+			ret.resize(dynamicInfo->repeatsN);
+			uint8_t *start = static_cast<uint8_t *>(allocationInfosFlying[flight].pMappedData);
 			for(T* &ptr : ret){
 				ptr = (T *)start;
-				start += dynamic->alignment;
+				start += dynamicInfo->alignment;
 			}
 		} else {
-			ret.push_back((T *)allocationInfosFlying[flight].pMappedData);
+			ret.push_back(static_cast<T *>(allocationInfosFlying[flight].pMappedData));
 		}
 		return ret;
 	}
 	
 	VkBuffer BufferFlying(uint32_t flight) const { return buffersFlying[flight]; }
 	VkDeviceSize Size() const { return size; }
-	const std::optional<Dynamic> &GetDynamic() const { return dynamic; }
+	const std::optional<DynamicUBOInfo> &GetDynamic() const { return dynamicInfo; }
 	
 private:
 	std::shared_ptr<Devices> devices;
@@ -121,7 +154,7 @@ private:
 	VmaAllocationInfo allocationInfosFlying[MAX_FRAMES_IN_FLIGHT];
 	VkDeviceSize size;
 	
-	std::optional<Dynamic> dynamic;
+	std::optional<DynamicUBOInfo> dynamicInfo;
 };
 
 class StorageBufferObject {
@@ -259,7 +292,7 @@ public:
 		vkDestroyRenderPass(devices->GetLogicalDevice(), renderPass, nullptr);
 	}
 	
-	bool CmdBegin(VkCommandBuffer commandBuffer, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues, uint32_t flight){
+	bool CmdBegin(VkCommandBuffer commandBuffer, uint32_t flight, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues){
 		if(!targets){
 			std::cout << "Cannot begin buffered render pass; no targets.\n";
 			return false;
@@ -336,7 +369,7 @@ public:
 		vkDestroyRenderPass(devices->GetLogicalDevice(), renderPass, nullptr);
 	}
 	
-	bool CmdBegin(VkCommandBuffer commandBuffer, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues, int layer, uint32_t flight){
+	bool CmdBegin(VkCommandBuffer commandBuffer, uint32_t flight, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues, int layer){
 		if(!targets){
 			std::cout << "Cannot begin buffered render pass; no targets.\n";
 			return false;

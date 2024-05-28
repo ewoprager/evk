@@ -8,6 +8,8 @@ template <uint32_t binding, VkShaderStageFlags stageFlags, uint32_t imageCount>
 class TextureImagesDescriptor : public DescriptorBase<binding, stageFlags> {
 public:
 	using DescriptorBase = typename TextureImagesDescriptor::DescriptorBase;
+	static constexpr uint32_t bindingValue = binding;
+	static constexpr VkShaderStageFlags stageFlagsValue = stageFlags;
 	
 	TextureImagesDescriptor() = default;
 	

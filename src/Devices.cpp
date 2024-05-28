@@ -490,6 +490,12 @@ void Devices::CreateImage(const VkImageCreateInfo &imageCI, /*uint32_t width, ui
 	 vkBindImageMemory(logicalDevice, image, imageMemory, 0);
 	 */
 	
+	if(imageCI.extent.width == 0 ||
+	   imageCI.extent.height == 0 ||
+	   imageCI.extent.depth == 0){
+		throw std::runtime_error("Cannot create an empty image.");
+	}
+	
 	const VmaAllocationCreateInfo allocInfo = {
 		.usage = VMA_MEMORY_USAGE_AUTO,
 		.requiredFlags = properties,
