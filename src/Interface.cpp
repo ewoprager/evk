@@ -573,7 +573,7 @@ void Interface::EndFinalRenderPassAndFrame(std::optional<VkPipelineStageFlags> s
 	
 	currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
-void Interface::BeginCompute(){
+Interface::FrameInfo Interface::BeginCompute(){
 	vkWaitForFences(devices->GetLogicalDevice(), 1, &computeInFlightFencesFlying[currentFrame], VK_TRUE, UINT64_MAX);
 
 //	updateUniformBuffer(currentFrame);
@@ -588,6 +588,11 @@ void Interface::BeginCompute(){
 	if (vkBeginCommandBuffer(computeCommandBuffersFlying[currentFrame], &beginInfo) != VK_SUCCESS){
 		throw std::runtime_error("failed to begin recording compute command buffer!");
 	}
+	
+	return FrameInfo{
+		.cb = computeCommandBuffersFlying[currentFrame],
+		.frame = currentFrame
+	};
 }
 void Interface::EndCompute(){
 	if(vkEndCommandBuffer(computeCommandBuffersFlying[currentFrame]) != VK_SUCCESS){

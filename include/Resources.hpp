@@ -15,10 +15,11 @@ public:
 		CleanUpContents();
 	}
 	
-	bool Filled() const { return contents.has_value(); }
+	[[nodiscard]] bool Filled() const { return contents.has_value(); }
 	
 	void Fill(void *vertices, const VkDeviceSize &size, const VkDeviceSize &offset=0);
 	
+	[[nodiscard]]
 	bool CmdBind(VkCommandBuffer commandBuffer, uint32_t binding){
 		if(!contents){
 			std::cout << "Cannot bind vertex buffer, it is empty.\n";
@@ -49,10 +50,11 @@ public:
 		CleanUpContents();
 	}
 	
-	bool Filled() const { return contents.has_value(); }
+	[[nodiscard]] bool Filled() const { return contents.has_value(); }
 	
 	void Fill(uint32_t *indices, size_t indexCount, const VkDeviceSize &offset=0);
 	
+	[[nodiscard]]
 	bool CmdBind(VkCommandBuffer commandBuffer, VkIndexType type){
 		if(!contents){
 			std::cout << "Cannot bind index buffer, it is empty.\n";
@@ -62,6 +64,7 @@ public:
 		return true;
 	}
 	
+	[[nodiscard]]
 	std::optional<uint32_t> GetIndexCount() const {
 		return contents ? contents->indexCount : std::optional<uint32_t>();
 		
@@ -124,9 +127,12 @@ public:
 	}
 	
 	// ----- Modifying UBO data -----
+	[[nodiscard]]
 	T *GetDataPointer(uint32_t flight) const {
 		return static_cast<T *>(allocationInfosFlying[flight].pMappedData);
 	}
+	
+	[[nodiscard]]
 	std::vector<T *> GetDataPointers(uint32_t flight) const {
 		std::vector<T *> ret {};
 		if constexpr (dynamic){
@@ -142,9 +148,9 @@ public:
 		return ret;
 	}
 	
-	VkBuffer BufferFlying(uint32_t flight) const { return buffersFlying[flight]; }
-	VkDeviceSize Size() const { return size; }
-	const std::optional<DynamicUBOInfo> &GetDynamic() const { return dynamicInfo; }
+	[[nodiscard]] VkBuffer BufferFlying(uint32_t flight) const { return buffersFlying[flight]; }
+	[[nodiscard]] VkDeviceSize Size() const { return size; }
+	[[nodiscard]] const std::optional<DynamicUBOInfo> &GetDynamic() const { return dynamicInfo; }
 	
 private:
 	std::shared_ptr<Devices> devices;
@@ -169,14 +175,14 @@ public:
 		}
 	}
 	
-	bool Fill(const std::vector<std::byte> &data);
+	[[nodiscard]] bool Fill(const std::byte *data);
 	
-	void CmdBindAsVertexBuffer(VkCommandBuffer commandBuffer, uint32_t binding, const VkDeviceSize &offset, uint32_t flight){
+	void CmdBindAsVertexBuffer(VkCommandBuffer commandBuffer, uint32_t flight, uint32_t binding, const VkDeviceSize &offset){
 		vkCmdBindVertexBuffers(commandBuffer, binding, 1, &buffersFlying[flight], &offset);
 	}
 	
-	VkBuffer BufferFlying(uint32_t flight) const { return buffersFlying[flight]; }
-	VkDeviceSize Size() const { return size; }
+	[[nodiscard]] VkBuffer BufferFlying(uint32_t flight) const { return buffersFlying[flight]; }
+	[[nodiscard]] VkDeviceSize Size() const { return size; }
 	
 private:
 	std::shared_ptr<Devices> devices;
@@ -248,10 +254,10 @@ public:
 							  1, &imageMemoryBarrier);
 	}
 	
-	VkImageView View() const { return view; }
-	const VkExtent3D &Extent() const { return extent; }
-	VkFormat Format() const { return format; }
-	VkImage Image() const { return image; }
+	[[nodiscard]] VkImageView View() const { return view; }
+	[[nodiscard]] const VkExtent3D &Extent() const { return extent; }
+	[[nodiscard]] VkFormat Format() const { return format; }
+	[[nodiscard]] VkImage Image() const { return image; }
 	
 private:
 	std::shared_ptr<Devices> devices;
@@ -275,7 +281,7 @@ public:
 		vkDestroySampler(devices->GetLogicalDevice(), handle, nullptr);
 	}
 	
-	VkSampler Handle() const { return handle; }
+	[[nodiscard]] VkSampler Handle() const { return handle; }
 	
 private:
 	std::shared_ptr<Devices> devices;
@@ -292,6 +298,7 @@ public:
 		vkDestroyRenderPass(devices->GetLogicalDevice(), renderPass, nullptr);
 	}
 	
+	[[nodiscard]]
 	bool CmdBegin(VkCommandBuffer commandBuffer, uint32_t flight, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues){
 		if(!targets){
 			std::cout << "Cannot begin buffered render pass; no targets.\n";
@@ -324,10 +331,10 @@ public:
 		return true;
 	}
 	
-	bool Valid() const { return targets.has_value(); }
-	VkRenderPass RenderPassHandle() const { return renderPass; }
+	[[nodiscard]] bool Valid() const { return targets.has_value(); }
+	[[nodiscard]] VkRenderPass RenderPassHandle() const { return renderPass; }
 	
-	bool SetImages(std::vector<std::shared_ptr<TextureImage>> images);
+	[[nodiscard]] bool SetImages(std::vector<std::shared_ptr<TextureImage>> images);
 	
 private:
 	std::shared_ptr<Devices> devices;
@@ -369,6 +376,7 @@ public:
 		vkDestroyRenderPass(devices->GetLogicalDevice(), renderPass, nullptr);
 	}
 	
+	[[nodiscard]]
 	bool CmdBegin(VkCommandBuffer commandBuffer, uint32_t flight, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues, int layer){
 		if(!targets){
 			std::cout << "Cannot begin buffered render pass; no targets.\n";
@@ -402,8 +410,8 @@ public:
 		return true;
 	}
 	
-	bool Valid() const { return targets.has_value(); }
-	VkRenderPass RenderPassHandle() const { return renderPass; }
+	[[nodiscard]] bool Valid() const { return targets.has_value(); }
+	[[nodiscard]] VkRenderPass RenderPassHandle() const { return renderPass; }
 	
 	void SetImage(std::shared_ptr<TextureImage> image){
 		// image must be 2D??

@@ -89,7 +89,7 @@ public:
 		VkCommandBuffer cb;
 		uint32_t frame;
 	};
-	std::optional<FrameInfo> BeginFrame();
+	[[nodiscard]] std::optional<FrameInfo> BeginFrame();
 //	void CmdBeginBufferedRenderPass(int bufferedRenderPassIndex, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues);
 //	void CmdBeginLayeredBufferedRenderPass(int layeredBufferedRenderPassIndex, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues, int layer);
 	void CmdEndRenderPass();
@@ -104,7 +104,7 @@ public:
 	void CmdSetDepthBias(float constantFactor, float clamp, float slopeFactor);
 	
 	// ----- Compute commands -----
-	void BeginCompute();
+	[[nodiscard]] FrameInfo BeginCompute();
 	void EndCompute();
 	void CmdDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ);
 	
@@ -121,9 +121,9 @@ public:
 	
 	
 	// ----- Getters -----
-	const VkRenderPass &GetRenderPassHandle() const { return renderPass; }
-	const uint32_t &GetExtentWidth() const { return swapChainExtent.width; }
-	const uint32_t &GetExtentHeight() const { return swapChainExtent.height; }
+	[[nodiscard]] const VkRenderPass &GetRenderPassHandle() const { return renderPass; }
+	[[nodiscard]] const uint32_t &GetExtentWidth() const { return swapChainExtent.width; }
+	[[nodiscard]] const uint32_t &GetExtentHeight() const { return swapChainExtent.height; }
 //	bool GetVertexBufferCreated(int index) const { return (bool)vertexBufferObjects[index]; }
 //	bool GetIndexBufferCreated(int index) const { return (bool)indexBufferObjects[index]; }
 //	std::optional<VkDeviceSize> GetUniformBufferObjectDynamicAlignment(int index) const { return uniformBufferObjects[index]->dynamic ? uniformBufferObjects[index]->dynamic.value().alignment : std::optional<VkDeviceSize>(); }

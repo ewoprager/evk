@@ -13,8 +13,9 @@ public:
 	
 	SBODescriptor() = default;
 	
-	void Set(std::shared_ptr<StorageBufferObject> value){
+	void Set(std::shared_ptr<StorageBufferObject> value, int _flightOffset){
 		object = std::move(value);
+		flightOffset = _flightOffset;
 		DescriptorBase::valid = false;
 	}
 	

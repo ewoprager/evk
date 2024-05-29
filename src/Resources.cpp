@@ -72,13 +72,9 @@ StorageBufferObject::StorageBufferObject(std::shared_ptr<Devices> _devices,
 	}
 }
 
-bool StorageBufferObject::Fill(const std::vector<std::byte> &data){
-	if(data.size() != size){
-		std::cout << "Data does not match storage buffer size.\n";
-		return false;
-	}
+bool StorageBufferObject::Fill(const std::byte *data){
 	for(int i=0; i<MAX_FRAMES_IN_FLIGHT; ++i){
-		devices->FillExistingDeviceLocalBuffer(buffersFlying[i], (void *)(data.data()), size);
+		devices->FillExistingDeviceLocalBuffer(buffersFlying[i], (void *)(data), size);
 	}
 	return true;
 }
