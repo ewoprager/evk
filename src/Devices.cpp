@@ -155,8 +155,8 @@ static void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMesse
 Devices::Devices(const char *applicationName,
 				 std::vector<const char *> requiredExtensions,
 				 std::function<VkSurfaceKHR (VkInstance)> surfaceCreationFunction,
-				 std::function<VkExtent2D ()> _getExtentFunction)
-: getExtentFunction(std::move(_getExtentFunction)) {
+				 const std::function<VkExtent2D ()> &_getExtentFunction)
+: getExtentFunction(_getExtentFunction) {
 	
 	// -----
 	// Creating Vulkan instance

@@ -72,7 +72,7 @@ std::shared_ptr<type> Build(std::shared_ptr<EVK::Devices> devices, VkRenderPass 
 	
 	...
 	
-	const type::Blueprint blueprint = {
+	const EVK::RenderPipelineBlueprint blueprint = {
 		.primitiveTopology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
 		.pRasterisationStateCI = &rasterizer,
 		.pMultisampleStateCI = &multisampling,

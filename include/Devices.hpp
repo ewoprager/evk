@@ -8,7 +8,7 @@ namespace EVK {
 
 class Devices {
 public:
-	Devices(const char *applicationName, std::vector<const char *> requiredExtensions, std::function<VkSurfaceKHR (VkInstance)> surfaceCreationFunction, std::function<VkExtent2D ()> _getExtentFunction);
+	Devices(const char *applicationName, std::vector<const char *> requiredExtensions, std::function<VkSurfaceKHR (VkInstance)> surfaceCreationFunction, const std::function<VkExtent2D ()> &_getExtentFunction);
 	
 	Devices() = delete;
 	Devices(const Devices &) = delete;

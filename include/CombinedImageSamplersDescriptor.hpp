@@ -18,8 +18,8 @@ public:
 		std::shared_ptr<TextureSampler> sampler;
 	};
 	
-	void Set(std::array<Combo, count> value){
-		combos = std::move(value);
+	void Set(const std::array<Combo, count> &value){
+		combos = value;
 		DescriptorBase::valid = false;
 	}
 	

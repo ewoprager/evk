@@ -225,11 +225,11 @@ struct ManualImageBlueprint {
 
 class TextureImage {
 public:
-	TextureImage(std::shared_ptr<Devices> _devices, PNGImageBlueprint fromPNG);
-	TextureImage(std::shared_ptr<Devices> _devices, DataImageBlueprint fromRaw);
-	TextureImage(std::shared_ptr<Devices> _devices, Data3DImageBlueprint fromRaw3D);
-	TextureImage(std::shared_ptr<Devices> _devices, CubemapPNGImageBlueprint fromPNGCubemaps);
-	TextureImage(std::shared_ptr<Devices> _devices, ManualImageBlueprint manual);
+	TextureImage(std::shared_ptr<Devices> _devices, const PNGImageBlueprint &fromPNG);
+	TextureImage(std::shared_ptr<Devices> _devices, const DataImageBlueprint &fromRaw);
+	TextureImage(std::shared_ptr<Devices> _devices, const Data3DImageBlueprint &fromRaw3D);
+	TextureImage(std::shared_ptr<Devices> _devices, const CubemapPNGImageBlueprint &fromPNGCubemaps);
+	TextureImage(std::shared_ptr<Devices> _devices, const ManualImageBlueprint &manual);
 	~TextureImage(){
 		vkDestroyImageView(devices->GetLogicalDevice(), view, nullptr);
 		vmaDestroyImage(devices->GetAllocator(), image, allocation);
@@ -334,7 +334,7 @@ public:
 	[[nodiscard]] bool Valid() const { return targets.has_value(); }
 	[[nodiscard]] VkRenderPass RenderPassHandle() const { return renderPass; }
 	
-	[[nodiscard]] bool SetImages(std::vector<std::shared_ptr<TextureImage>> images);
+	[[nodiscard]] bool SetImages(const std::vector<std::shared_ptr<TextureImage>> &images);
 	
 private:
 	std::shared_ptr<Devices> devices;
@@ -365,7 +365,7 @@ public:
 							  const VkRenderPassCreateInfo *const pRenderPassCI,
 							  VkImageAspectFlags _imageAspectFlags)
 		: devices(std::move(_devices))
-		, imageAspectFlags(std::move(_imageAspectFlags)) {
+		, imageAspectFlags(_imageAspectFlags) {
 			
 		if(vkCreateRenderPass(devices->GetLogicalDevice(), pRenderPassCI, nullptr, &renderPass) != VK_SUCCESS){
 			throw std::runtime_error("Failed to create render pass!");
@@ -413,13 +413,13 @@ public:
 	[[nodiscard]] bool Valid() const { return targets.has_value(); }
 	[[nodiscard]] VkRenderPass RenderPassHandle() const { return renderPass; }
 	
-	void SetImage(std::shared_ptr<TextureImage> image){
+	void SetImage(const std::shared_ptr<TextureImage> &image){
 		// image must be 2D??
 		 
 		 CleanUpTargets();
 		 
 		 targets = Targets();
-		 targets->image = std::move(image);
+		 targets->image = image;
 		 
 		 for(uint32_t i=0; i<layersN; ++i){
 			 // Image view for this cascade's layer (inside the depth map)

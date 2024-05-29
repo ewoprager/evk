@@ -13,8 +13,8 @@ public:
 	
 	UBODescriptor() = default;
 	
-	void Set(std::shared_ptr<UniformBufferObject<T, dynamic>> value){
-		object = std::move(value);
+	void Set(const std::shared_ptr<UniformBufferObject<T, dynamic>> &value){
+		object = value;
 		DescriptorBase::valid = false;
 	}
 	

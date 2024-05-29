@@ -13,8 +13,8 @@ public:
 	
 	TextureSamplersDescriptor() = default;
 	
-	void Set(std::array<std::shared_ptr<TextureSampler>, samplerCount> value){
-		samplers = std::move(value);
+	void Set(const std::array<std::shared_ptr<TextureSampler>, samplerCount> &value){
+		samplers = value;
 		DescriptorBase::valid = false;
 	}
 	

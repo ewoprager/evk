@@ -60,7 +60,7 @@ StorageBufferObject::StorageBufferObject(std::shared_ptr<Devices> _devices,
 										 VkDeviceSize _size,
 										 VkBufferUsageFlags usages,
 										 VkMemoryPropertyFlags memoryProperties)
-: devices(std::move(_devices)), size(std::move(_size)) {
+: devices(std::move(_devices)), size(_size) {
 	for(size_t i=0; i<MAX_FRAMES_IN_FLIGHT; ++i){
 		// creating buffer
 		devices->CreateBuffer(size,
@@ -79,7 +79,7 @@ bool StorageBufferObject::Fill(const std::byte *data){
 	return true;
 }
 
-TextureImage::TextureImage(std::shared_ptr<Devices> _devices, PNGImageBlueprint fromPNG)
+TextureImage::TextureImage(std::shared_ptr<Devices> _devices, const PNGImageBlueprint &fromPNG)
 : devices(std::move(_devices)){
 	SDL_Surface *const surface = IMG_Load(fromPNG.imageFilename.c_str());
 	
@@ -97,11 +97,11 @@ TextureImage::TextureImage(std::shared_ptr<Devices> _devices, PNGImageBlueprint 
 	
 	SDL_FreeSurface(surface);
 }
-TextureImage::TextureImage(std::shared_ptr<Devices> _devices, DataImageBlueprint fromRaw)
+TextureImage::TextureImage(std::shared_ptr<Devices> _devices, const DataImageBlueprint &fromRaw)
 : devices(std::move(_devices)) {
-	ConstructFromData(std::move(fromRaw));
+	ConstructFromData(fromRaw);
 }
-TextureImage::TextureImage(std::shared_ptr<Devices> _devices, Data3DImageBlueprint fromRaw3D)
+TextureImage::TextureImage(std::shared_ptr<Devices> _devices, const Data3DImageBlueprint &fromRaw3D)
 : devices(std::move(_devices)) {
 	const VkDeviceSize imageSize = fromRaw3D.height * fromRaw3D.pitch * fromRaw3D.depth;
 	
@@ -158,7 +158,7 @@ TextureImage::TextureImage(std::shared_ptr<Devices> _devices, Data3DImageBluepri
 	extent = imageCI.extent;
 	format = imageCI.format;
 }
-TextureImage::TextureImage(std::shared_ptr<Devices> _devices, CubemapPNGImageBlueprint fromPNGCubemaps)
+TextureImage::TextureImage(std::shared_ptr<Devices> _devices, const CubemapPNGImageBlueprint &fromPNGCubemaps)
 : devices(std::move(_devices)) {
 	// loading image onto an sdl devices->surface
 	std::array<SDL_Surface *, 6> surfaces;
@@ -255,9 +255,9 @@ TextureImage::TextureImage(std::shared_ptr<Devices> _devices, CubemapPNGImageBlu
 	extent = imageCI.extent;
 	format = imageCI.format;
 }
-TextureImage::TextureImage(std::shared_ptr<Devices> _devices, ManualImageBlueprint fromBlueprint)
+TextureImage::TextureImage(std::shared_ptr<Devices> _devices, const ManualImageBlueprint &fromBlueprint)
 : devices(std::move(_devices)) {
-	ConstructManual(std::move(fromBlueprint));
+	ConstructManual(fromBlueprint);
 }
 
 
@@ -371,7 +371,7 @@ BufferedRenderPass::BufferedRenderPass(std::shared_ptr<Devices> _devices,
 //	}
 }
 
-bool BufferedRenderPass::SetImages(std::vector<std::shared_ptr<TextureImage>> images){
+bool BufferedRenderPass::SetImages(const std::vector<std::shared_ptr<TextureImage>> &images){
 	if(images.size() < 1){
 		std::cout << "Empty image array passed.\n";
 		return false;
@@ -398,7 +398,7 @@ bool BufferedRenderPass::SetImages(std::vector<std::shared_ptr<TextureImage>> im
 	CleanUpTargets();
 	
 	targets = Targets();
-	targets->images = std::move(images);
+	targets->images = images;
 	
 	const VkFramebufferCreateInfo frameBufferCI = {
 		.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,

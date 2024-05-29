@@ -13,8 +13,8 @@ public:
 	
 	TextureImagesDescriptor() = default;
 	
-	void Set(std::array<std::shared_ptr<TextureImage>, imageCount> value){
-		images = std::move(value);
+	void Set(const std::array<std::shared_ptr<TextureImage>, imageCount> &value){
+		images = value;
 		DescriptorBase::valid = false;
 	}
 	
