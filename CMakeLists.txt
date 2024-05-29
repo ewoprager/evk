@@ -49,3 +49,38 @@ install(TARGETS ${PROJECT_NAME}
 		PUBLIC_HEADER DESTINATION "include/evk"
 )
 
+
+
+
+add_executable(test
+            "${CMAKE_CURRENT_SOURCE_DIR}/${SOURCES}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/${HEADERS}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/test/main.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/test/vert.vert"
+            "${CMAKE_CURRENT_SOURCE_DIR}/test/frag.frag"
+            )
+
+#execute_process(COMMAND "./compile.sh"
+#				WORKING_DIRECTORY "test")
+
+#file(COPY "test/Shaders/"
+#     DESTINATION "Shaders/")
+
+target_include_directories(test PUBLIC
+                           "${CMAKE_CURRENT_SOURCE_DIR}/include/"
+						   "/usr/local/include/"
+                           "/Users/eprager/local/include/"
+                           "/opt/local/include/"
+                           )
+
+target_link_directories(test PUBLIC
+                        "/usr/local/lib/"
+						"/Users/eprager/local/lib/"
+                        "/opt/local/lib/"
+                        )
+
+set_property(TARGET test PROPERTY CXX_STANDARD 20)
+
+target_link_libraries(test SDL2 mattresses vulkan evk)
+
+#set_target_properties(test PROPERTIES OUTPUT_NAME evk)

@@ -1,0 +1,217 @@
+
+// Render pipeline template
+
+namespace Pipeline {
+
+namespace VertexShader {
+
+static constexpr char vertexFilename[] = "../Shaders/vert.spv";
+
+struct PushConstantType {
+	mat<4, 4> projViewModel;
+};
+using PCS = EVK::PushConstants<0, PushConstantType>;
+static_assert(EVK::pushConstants_c<PCS>);
+
+using Attributes = EVK::Attributes<EVK::BindingDescriptionPack<
+VkVertexInputBindingDescription{
+	0, // binding
+	20, // stride
+	VK_VERTEX_INPUT_RATE_VERTEX // input rate
+}
+>, EVK::AttributeDescriptionPack<
+VkVertexInputAttributeDescription{
+	0, 0, VK_FORMAT_R32G32_SFLOAT, 0
+},
+VkVertexInputAttributeDescription{
+	1, 0, VK_FORMAT_R32G32B32_SFLOAT, 8
+}
+>>;
+
+using type = EVK::VertexShader<vertexFilename, PCS, Attributes
+//, EVK::UBOUniform<0, 0, UBO>
+>;
+
+static_assert(EVK::vertexShader_c<type>);
+
+} // namespace VertexShader
+
+namespace FragmentShader {
+
+static constexpr char fragmentFilename[] = "../Shaders/frag.spv";
+
+//struct PushConstantType {
+//	vec<4, float32_t> colourMult;
+//	vec<4, float32_t> specular;
+//	float32_t shininess;
+//	float32_t specularFactor;
+//	int32_t textureID;
+//};
+
+//using PCS = EVK::PushConstants<16, PushConstantType>;
+//static_assert(EVK::pushConstants_c<PCS>);
+
+struct UBO {
+	float redOffset;
+};
+
+using type = EVK::Shader<VK_SHADER_STAGE_FRAGMENT_BIT, fragmentFilename, EVK::NoPushConstants
+, EVK::UBOUniform<0, 0, false>
+//,
+//EVK::TextureSamplersUniform<0, 1, 1>,
+//EVK::TextureImagesUniform<0, 2, PNGS_N>,
+//EVK::CombinedImageSamplersUniform<0, 3, 1>
+>;
+static_assert(EVK::shader_c<type>);
+
+} // namespace FragmentShader
+
+using type = EVK::RenderPipeline<VertexShader::type, FragmentShader::type>;
+
+std::shared_ptr<type> Build(std::shared_ptr<EVK::Devices> devices, VkRenderPass renderPassHandle){
+	
+	...
+	
+	const EVK::RenderPipelineBlueprint blueprint = {
+		.primitiveTopology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+		.pRasterisationStateCI = &rasterizer,
+		.pMultisampleStateCI = &multisampling,
+		.pDepthStencilStateCI = &depthStencil,
+		.pColourBlendStateCI = &colourBlending,
+		.pDynamicStateCI = &dynamicState,
+		.renderPassHandle = renderPassHandle
+	};
+	
+	return std::make_shared<type>(devices, &blueprint);
+}
+
+} // namespace Pipeline
+
+
+
+
+
+
+// Pipeline blueprint template
+{
+	std::shared_ptr<type> Build(std::shared_ptr<EVK::Devices> devices, VkRenderPass renderPassHandle){
+		
+	VkPipelineRasterizationStateCreateInfo rasterizer{};
+	rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterizer.depthClampEnable = VK_FALSE;
+	
+	//If depthClampEnable is set to VK_TRUE, then fragments that are beyond the near and far planes are clamped to them as opposed to discarding them. This is useful in some special cases like shadow maps.
+	 
+	//Using this requires enabling a GPU feature.
+	
+	rasterizer.rasterizerDiscardEnable = VK_FALSE;
+	rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+	
+	//The polygonMode determines how fragments are generated for geometry. The following modes are available:
+	 
+	//VK_POLYGON_MODE_FILL: fill the area of the polygon with fragments
+	//VK_POLYGON_MODE_LINE: polygon edges are drawn as lines
+	//VK_POLYGON_MODE_POINT: polygon vertices are drawn as points
+	 
+	//Using any mode other than fill requires enabling a GPU feature.
+	
+	rasterizer.lineWidth = 1.0f;
+	//The lineWidth member is straightforward, it describes the thickness of lines in terms of number of fragments. The maximum line width that is supported depends on the hardware and any line thicker than 1.0f requires you to enable the wideLines GPU feature.
+	
+	//rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+	rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	//The cullMode variable determines the type of face culling to use. You can disable culling, cull the front faces, cull the back faces or both. The frontFace variable specifies the vertex order for faces to be considered front-facing and can be clockwise or counterclockwise.
+	
+	//rasterizer.depthBiasEnable = VK_FALSE;
+	rasterizer.depthBiasConstantFactor = 0.0f; // Optional
+	rasterizer.depthBiasClamp = 0.0f; // Optional
+	rasterizer.depthBiasSlopeFactor = 0.0f; // Optional
+	
+	
+	// ----- Multisampling behaviour -----
+	VkPipelineMultisampleStateCreateInfo multisampling{};
+	multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisampling.sampleShadingEnable = VK_FALSE;
+	//#ifdef MSAA
+	//multisampling.rasterizationSamples = device.GetMSAASamples();
+	//#else
+	//multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	//#endif
+	multisampling.minSampleShading = 1.0f; // Optional
+	multisampling.pSampleMask = nullptr; // Optional
+	multisampling.alphaToCoverageEnable = VK_FALSE; // Optional
+	multisampling.alphaToOneEnable = VK_FALSE; // Optional
+	// This is how to achieve anti-aliasing.
+	// Enabling it requires enabling a GPU feature
+	
+	
+	// ----- Colour blending behaviour -----
+	VkPipelineColorBlendStateCreateInfo colourBlending{};
+	VkPipelineColorBlendAttachmentState colourBlendAttachment{};
+	colourBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	colourBlendAttachment.blendEnable = VK_TRUE;
+	colourBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+	colourBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+	colourBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+	colourBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	colourBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colourBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+	
+	colourBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	colourBlending.logicOpEnable = VK_FALSE;
+	colourBlending.logicOp = VK_LOGIC_OP_COPY; // Optional
+	//colourBlending.attachmentCount = 1;
+	colourBlending.pAttachments = &colourBlendAttachment;
+	colourBlending.blendConstants[0] = 0.0f; // Optional
+	colourBlending.blendConstants[1] = 0.0f; // Optional
+	colourBlending.blendConstants[2] = 0.0f; // Optional
+	colourBlending.blendConstants[3] = 0.0f; // Optional
+	
+	
+	// ----- Depth stencil behaviour -----
+	VkPipelineDepthStencilStateCreateInfo depthStencil{};
+	depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthStencil.depthTestEnable = VK_TRUE;
+	depthStencil.depthWriteEnable = VK_TRUE;
+	//depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+	depthStencil.depthBoundsTestEnable = VK_FALSE;
+	depthStencil.minDepthBounds = 0.0f; // Optional
+	depthStencil.maxDepthBounds = 1.0f; // Optional
+	depthStencil.stencilTestEnable = VK_FALSE;
+	depthStencil.front = {}; // Optional
+	depthStencil.back = {}; // Optional
+	
+	// ----- Dynamic state -----
+	VkPipelineDynamicStateCreateInfo dynamicState{};
+	VkDynamicState dynamicStates[3] = {
+		VK_DYNAMIC_STATE_VIEWPORT,
+		VK_DYNAMIC_STATE_SCISSOR,
+		VK_DYNAMIC_STATE_DEPTH_BIAS
+	};
+	dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	//dynamicState.dynamicStateCount = 2;
+	dynamicState.pDynamicStates = dynamicStates;
+	
+	rasterizer.cullMode = VK_CULL_MODE_NONE;
+	rasterizer.depthBiasEnable = VK_FALSE;
+	#ef MSAA
+	multisampling.rasterizationSamples = devices.GetMSAASamples();
+	#e
+	multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	#if
+	colourBlending.attachmentCount = 1;
+	depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+	dynamicState.dynamicStateCount = 2;
+	
+	const type::Blueprint blueprint = {
+		.primitiveTopology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+		.pRasterisationStateCI = &rasterizer,
+		.pMultisampleStateCI = &multisampling,
+		.pDepthStencilStateCI = &depthStencil,
+		.pColourBlendStateCI = &colourBlending,
+		.pDynamicStateCI = &dynamicState,
+		.renderPassHandle = renderPassHandle
+	};
+	
+	return std::make_shared<type>(devices, &blueprint);
+}

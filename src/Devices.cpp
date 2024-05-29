@@ -1,7 +1,10 @@
 #include <set>
 #include <fstream>
+#include <iostream>
 
-#include <Base.hpp>
+#include <vma/vk_mem_alloc.h>
+
+#include <Devices.hpp>
 
 static std::vector<char> ReadFile(const char *filename){
 	std::ifstream ifs(filename, std::ios::binary | std::ios::ate);
@@ -152,8 +155,8 @@ static void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMesse
 Devices::Devices(const char *applicationName,
 				 std::vector<const char *> requiredExtensions,
 				 std::function<VkSurfaceKHR (VkInstance)> surfaceCreationFunction,
-				 std::function<VkExtent2D ()> _getExtentFunction)
-: getExtentFunction(std::move(_getExtentFunction)) {
+				 const std::function<VkExtent2D ()> &_getExtentFunction)
+: getExtentFunction(_getExtentFunction) {
 	
 	// -----
 	// Creating Vulkan instance
@@ -183,7 +186,7 @@ Devices::Devices(const char *applicationName,
 		createInfo.enabledLayerCount = 0;
 		createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
 		if(vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS)
-			throw std::runtime_error("failed to create devices.instance!");
+			throw std::runtime_error("failed to create instance!");
 	}
 	
 #ifndef NDEBUG
@@ -293,10 +296,25 @@ Devices::Devices(const char *applicationName,
 			.vulkanApiVersion = VULKAN_VERSION_USING
 		};
 		if(vmaCreateAllocator(&createInfo, &allocator) != VK_SUCCESS)
-			throw std::runtime_error("failed to create memory devices.allocator!");
+			throw std::runtime_error("failed to create memory allocator!");
+	}
+	
+	// -----
+	// Creating the command pool
+	// -----
+	{
+		const VkCommandPoolCreateInfo poolInfo{
+			.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+			.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+			.queueFamilyIndex = queueFamilyIndices.graphicsAndComputeFamily.value()
+		};
+		if(vkCreateCommandPool(logicalDevice, &poolInfo, nullptr, &commandPool) != VK_SUCCESS){
+			throw std::runtime_error("failed to create command pool!");
+		}
 	}
 }
 Devices::~Devices(){
+	vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
 	vmaDestroyAllocator(allocator);
 	vkDestroyDevice(logicalDevice, nullptr);
 #ifndef NDEBUG
@@ -304,6 +322,41 @@ Devices::~Devices(){
 #endif
 	vkDestroySurfaceKHR(instance, surface, nullptr);
 	vkDestroyInstance(instance, nullptr);
+}
+
+VkCommandBuffer Devices::BeginSingleTimeCommands() const {
+	const VkCommandBufferAllocateInfo allocInfo{
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+		.commandPool = commandPool,
+		.commandBufferCount = 1
+	};
+	VkCommandBuffer commandBuffer;
+	vkAllocateCommandBuffers(logicalDevice, &allocInfo, &commandBuffer);
+	
+	const VkCommandBufferBeginInfo beginInfo{
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+	};
+	if(vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS){
+		throw std::runtime_error("failed to begin recording command buffer!");
+	}
+	
+	return commandBuffer;
+}
+void Devices::EndSingleTimeCommands(VkCommandBuffer commandBuffer) const {
+	vkEndCommandBuffer(commandBuffer);
+	
+	// submitting the comand buffer to a queue that has 'VK_QUEUE_TRANSFER_BIT'. fortunately, this is case for any queue with 'VK_QUEUE_GRAPHICS_BIT' (or 'VK_QUEUE_COMPUTE_BIT')
+	const VkSubmitInfo submitInfo{
+		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+		.commandBufferCount = 1,
+		.pCommandBuffers = &commandBuffer
+	};
+	vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+	vkQueueWaitIdle(graphicsQueue); // wait until commands have been executed before returning. using fences here could allow multiple transfers to be scheduled simultaneously
+	
+	vkFreeCommandBuffers(logicalDevice, commandPool, 1, &commandBuffer);
 }
 
 VkShaderModule Devices::CreateShaderModule(const char *filename) const {
@@ -363,6 +416,311 @@ VkFormat Devices::FindDepthFormat() const {
 	return FindSupportedFormat({VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT},
 							   VK_IMAGE_TILING_OPTIMAL,
 							   VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
+}
+
+void Devices::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer &buffer, VmaAllocation &allocation, VmaAllocationInfo *allocationInfoDst) const {
+	/*
+	 VkBufferCreateInfo bufferInfo{};
+	 // creating buffer
+	 bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	 bufferInfo.size = size;
+	 bufferInfo.usage = usage;
+	 bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	 if(vkCreateBuffer(logicalDevice, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) throw std::runtime_error("failed to create buffer!");
+	 
+	 // allocating memory for the buffer
+	 VkMemoryRequirements memRequirements;
+	 vkGetBufferMemoryRequirements(logicalDevice, buffer, &memRequirements);
+	 VkMemoryAllocateInfo allocInfo{};
+	 allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	 allocInfo.allocationSize = memRequirements.size;
+	 allocInfo.memoryTypeIndex = FindMemoryType(memRequirements.memoryTypeBits, properties);
+	 if(vkAllocateMemory(logicalDevice, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) throw std::runtime_error("failed to allocate buffer memory!");
+	 
+	 vkBindBufferMemory(logicalDevice, buffer, bufferMemory, 0);
+	 */
+	
+	VkBufferCreateInfo bufferInfo{
+		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+		.size = size,
+		.usage = usage,
+		.sharingMode = VK_SHARING_MODE_EXCLUSIVE
+	};
+	VmaAllocationCreateInfo allocInfo = {
+		.usage = VMA_MEMORY_USAGE_AUTO,
+		.requiredFlags = properties
+	};
+	if(allocationInfoDst){
+		allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+	}
+	if(vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &buffer, &allocation, allocationInfoDst) != VK_SUCCESS){
+		throw std::runtime_error("failed to create buffer!");
+	}
+}
+
+void Devices::CreateImage(const VkImageCreateInfo &imageCI, /*uint32_t width, uint32_t height, uint32_t mipLevels, VkSampleCountFlagBits numSamples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage,*/ VkMemoryPropertyFlags properties, VkImage &image, VmaAllocation &allocation) const {
+	
+	/*
+	 VkImageCreateInfo imageInfo{};
+	 imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	 imageInfo.imageType = VK_IMAGE_TYPE_2D;
+	 imageInfo.extent.width = width;
+	 imageInfo.extent.height = height;
+	 imageInfo.extent.depth = 1;
+	 imageInfo.mipLevels = mipLevels;
+	 imageInfo.arrayLayers = 1;
+	 imageInfo.format = format;
+	 imageInfo.tiling = tiling; // VK_IMAGE_TILING_LINEAR for row-major order if we want to access texels in the memory of the image
+	 imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	 imageInfo.usage = usage;
+	 imageInfo.samples = numSamples;
+	 imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	 */
+	/*
+	 if(vkCreateImage(logicalDevice, &imageInfo, nullptr, &image) != VK_SUCCESS) throw std::runtime_error("failed to create image!");
+	 
+	 VkMemoryRequirements memRequirements;
+	 vkGetImageMemoryRequirements(logicalDevice, image, &memRequirements);
+	 VkMemoryAllocateInfo allocInfo{};
+	 allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	 allocInfo.allocationSize = memRequirements.size;
+	 allocInfo.memoryTypeIndex = FindMemoryType(memRequirements.memoryTypeBits, properties);
+	 if(vkAllocateMemory(logicalDevice, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) throw std::runtime_error("failed to allocate image memory!");
+	 // binding memory
+	 vkBindImageMemory(logicalDevice, image, imageMemory, 0);
+	 */
+	
+	if(imageCI.extent.width == 0 ||
+	   imageCI.extent.height == 0 ||
+	   imageCI.extent.depth == 0){
+		throw std::runtime_error("Cannot create an empty image.");
+	}
+	
+	const VmaAllocationCreateInfo allocInfo = {
+		.usage = VMA_MEMORY_USAGE_AUTO,
+		.requiredFlags = properties,
+		.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
+		.priority = 1.0f
+	};
+	if(const VkResult res = vmaCreateImage(allocator, &imageCI, &allocInfo, &image, &allocation, nullptr);
+	   res != VK_SUCCESS){
+		throw std::runtime_error(std::string("failed to create image! VkResult = ") + std::to_string(res));
+	}
+}
+
+VkImageView Devices::CreateImageView(const VkImageViewCreateInfo &imageViewCI/*VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels*/) const {
+	/*
+	 VkImageViewCreateInfo viewInfo{};
+	 viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	 viewInfo.image = image;
+	 viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	 viewInfo.format = format;
+	 viewInfo.subresourceRange.aspectMask = aspectFlags;
+	 viewInfo.subresourceRange.baseMipLevel = 0;
+	 viewInfo.subresourceRange.levelCount = mipLevels;
+	 viewInfo.subresourceRange.baseArrayLayer = 0;
+	 viewInfo.subresourceRange.layerCount = 1;
+	 */
+	VkImageView ret;
+	if(vkCreateImageView(logicalDevice, &imageViewCI, nullptr, &ret) != VK_SUCCESS)
+		throw std::runtime_error("failed to create texture image view!");
+	return ret;
+}
+
+void Devices::CreateAndFillDeviceLocalBuffer(VkBuffer &bufferHandle, VmaAllocation &allocation, void *data, const VkDeviceSize &size, const VkBufferUsageFlags &usageFlags) const {
+	// creating staging buffer
+	VkBuffer stagingBuffer;
+	VmaAllocation stagingAllocation;
+	VmaAllocationInfo stagingAllocInfo;
+	CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingAllocation, &stagingAllocInfo);
+	
+	memcpy(stagingAllocInfo.pMappedData, data, (size_t)size);
+	vmaFlushAllocation(allocator, stagingAllocation, 0, VK_WHOLE_SIZE);
+	
+	// creating the new vertex buffer
+	CreateBuffer(size, // size
+				 VK_BUFFER_USAGE_TRANSFER_DST_BIT | usageFlags, // usage
+				 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, // properties; device local means we generally can't use 'vkMapMemory', but it is quicker to access by the GPU
+				 bufferHandle, // buffer handle output
+				 allocation); // buffer memory handle output
+	// copying the contents of the staging buffer into the vertex buffer
+	CopyBuffer(stagingBuffer, bufferHandle, size);
+	// cleaning up staging buffer
+	vmaDestroyBuffer(allocator, stagingBuffer, stagingAllocation);
+}
+
+void Devices::FillExistingDeviceLocalBuffer(VkBuffer bufferHandle, void *data, const VkDeviceSize &size) const {
+	// creating staging buffer
+	VkBuffer stagingBuffer;
+	VmaAllocation stagingAllocation;
+	VmaAllocationInfo stagingAllocInfo;
+	CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingAllocation, &stagingAllocInfo);
+	
+	memcpy(stagingAllocInfo.pMappedData, data, (size_t)size);
+	vmaFlushAllocation(allocator, stagingAllocation, 0, VK_WHOLE_SIZE);
+	
+	// copying the contents of the staging buffer into the vertex buffer
+	CopyBuffer(stagingBuffer, bufferHandle, size);
+	// cleaning up staging buffer
+	vmaDestroyBuffer(allocator, stagingBuffer, stagingAllocation);
+}
+
+void Devices::GenerateMipmaps(VkImage image, VkFormat imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels) const {
+	// Check if image format supports linear blitting
+	VkFormatProperties formatProperties;
+	vkGetPhysicalDeviceFormatProperties(physicalDevice, imageFormat, &formatProperties);
+	if(!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)){
+		throw std::runtime_error("texture image format does not support linear blitting!");
+	}
+	
+	VkCommandBuffer commandBuffer = BeginSingleTimeCommands();
+	
+	VkImageMemoryBarrier barrier{};
+	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	barrier.image = image;
+	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	barrier.subresourceRange.baseArrayLayer = 0;
+	barrier.subresourceRange.layerCount = 1;
+	barrier.subresourceRange.levelCount = 1;
+	
+	int32_t mipWidth = texWidth;
+	int32_t mipHeight = texHeight;
+	for(uint32_t i=1; i<mipLevels; i++){
+		barrier.subresourceRange.baseMipLevel = i - 1;
+		barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		vkCmdPipelineBarrier(commandBuffer,
+							 VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+							 0, nullptr,
+							 0, nullptr,
+							 1, &barrier);
+		
+		VkImageBlit blit{};
+		blit.srcOffsets[0] = {0, 0, 0};
+		blit.srcOffsets[1] = {mipWidth, mipHeight, 1};
+		blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		blit.srcSubresource.mipLevel = i - 1;
+		blit.srcSubresource.baseArrayLayer = 0;
+		blit.srcSubresource.layerCount = 1;
+		
+		if(mipWidth > 1) mipWidth /= 2;
+		if(mipHeight > 1) mipHeight /= 2;
+		
+		blit.dstOffsets[0] = {0, 0, 0};
+		blit.dstOffsets[1] = {mipWidth, mipHeight, 1};
+		blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		blit.dstSubresource.mipLevel = i;
+		blit.dstSubresource.baseArrayLayer = 0;
+		blit.dstSubresource.layerCount = 1;
+		
+		vkCmdBlitImage(commandBuffer,
+					   image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+					   image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+					   1, &blit,
+					   VK_FILTER_LINEAR);
+		
+		barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		vkCmdPipelineBarrier(commandBuffer,
+							 VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+							 0, nullptr,
+							 0, nullptr,
+							 1, &barrier);
+	}
+	
+	barrier.subresourceRange.baseMipLevel = mipLevels - 1;
+	barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	vkCmdPipelineBarrier(commandBuffer,
+						 VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+						 0, nullptr,
+						 0, nullptr,
+						 1, &barrier);
+	
+	EndSingleTimeCommands(commandBuffer);
+}
+
+void Devices::CopyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) const {
+	VkCommandBuffer commandBuffer = BeginSingleTimeCommands();
+	
+	VkBufferCopy copyRegion{};
+	copyRegion.srcOffset = 0; // Optional
+	copyRegion.dstOffset = 0; // Optional
+	copyRegion.size = size;
+	vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
+	
+	EndSingleTimeCommands(commandBuffer);
+}
+void Devices::TransitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, VkImageSubresourceRange subResourceRange) const {
+	VkCommandBuffer commandBuffer = BeginSingleTimeCommands();
+	
+	VkImageMemoryBarrier barrier{};
+	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	barrier.oldLayout = oldLayout;
+	barrier.newLayout = newLayout;
+	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.image = image;
+	barrier.subresourceRange = subResourceRange;
+	
+	VkPipelineStageFlags sourceStage;
+	VkPipelineStageFlags destinationStage;
+	if(oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL){
+		barrier.srcAccessMask = 0;
+		barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		
+		sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+		destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+	} else if(oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL){
+		barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		
+		sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	} else{
+		throw std::invalid_argument("unsupported layout transition!");
+	}
+	
+	vkCmdPipelineBarrier(commandBuffer,
+						 sourceStage, destinationStage,
+						 0,
+						 0, nullptr,
+						 0, nullptr,
+						 1, &barrier);
+	
+	EndSingleTimeCommands(commandBuffer);
+}
+void Devices::CopyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height, uint32_t depth) const {
+	VkCommandBuffer commandBuffer = BeginSingleTimeCommands();
+	
+	VkBufferImageCopy region{
+		.bufferOffset = 0,
+		.bufferRowLength = 0,
+		.bufferImageHeight = 0,
+		.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+		.imageSubresource.mipLevel = 0,
+		.imageSubresource.baseArrayLayer = 0,
+		.imageSubresource.layerCount = 1,
+		.imageOffset = {0, 0, 0},
+		.imageExtent = {width, height, depth}
+	};
+	
+	vkCmdCopyBufferToImage(commandBuffer,
+						   buffer,
+						   image,
+						   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+						   1,
+						   &region);
+	
+	EndSingleTimeCommands(commandBuffer);
 }
 
 } // namespace::EVK
