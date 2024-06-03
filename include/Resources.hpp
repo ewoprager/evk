@@ -259,6 +259,123 @@ public:
 	[[nodiscard]] VkFormat Format() const { return format; }
 	[[nodiscard]] VkImage Image() const { return image; }
 	
+	template <typename T>
+	[[nodiscard]] std::vector<T> GetData(const VkOffset3D &sourceStart={0, 0, 0}, VkOffset3D sourceEnd={0, 0, 0}) const {
+		if(sourceEnd.x <= sourceStart.x ||
+		   sourceEnd.y <= sourceStart.y ||
+		   sourceEnd.z <= sourceStart.z){
+			sourceEnd = {static_cast<int32_t>(extent.width), static_cast<int32_t>(extent.height), static_cast<int32_t>(extent.depth)};
+		}
+		
+		const VkOffset3D destStart = {0, 0, 0};
+		const VkOffset3D destEnd = {sourceEnd.x - sourceStart.x, sourceEnd.y - sourceStart.y, sourceEnd.z - sourceStart.z};
+		const VkExtent3D retExtent = {static_cast<uint32_t>(destEnd.x), static_cast<uint32_t>(destEnd.y), static_cast<uint32_t>(destEnd.z)};
+		
+		const VkDeviceSize retSize = retExtent.width * retExtent.height * retExtent.depth * sizeof(T);
+		
+		VkImageCreateInfo imageCI = {
+			.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+			.imageType = retExtent.depth == 1 ? VK_IMAGE_TYPE_2D : VK_IMAGE_TYPE_3D,
+			.extent = retExtent,
+			.mipLevels = 1,
+			.arrayLayers = 1,
+			.format = format,
+			.tiling = VK_IMAGE_TILING_OPTIMAL, // VK_IMAGE_TILING_LINEAR for row-major order if we want to access texels in the memory of	the image
+			.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+			.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+			.samples = VK_SAMPLE_COUNT_1_BIT,
+			.sharingMode = VK_SHARING_MODE_EXCLUSIVE
+		};
+		VkImage staging_image;
+		VmaAllocation staging_image_allocation;
+		devices->CreateImage(imageCI, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, staging_image, staging_image_allocation);
+		
+		VkBuffer staging_buffer;
+		VmaAllocation staging_buffer_allocation;
+		VmaAllocationInfo stagingAllocInfo;
+		devices->CreateBuffer(retSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_allocation, &stagingAllocInfo);
+		// Copy texture to buffer
+		VkCommandBuffer commandBuffer = devices->BeginSingleTimeCommands();
+		VkImageMemoryBarrier image_memory_barrier {
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+			.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+			.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			.image = staging_image,
+			.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
+		};
+		
+		vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0
+			, 0, nullptr, 0, nullptr, 1, &image_memory_barrier);
+		image_memory_barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		image_memory_barrier.image = image;
+		vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0
+			, 0, nullptr, 0, nullptr, 1, &image_memory_barrier);
+		// Copy!!
+		VkImageBlit blit{};
+		blit.srcOffsets[0] = sourceStart;
+		blit.srcOffsets[1] = sourceEnd;
+		blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		blit.srcSubresource.mipLevel = 0;
+		blit.srcSubresource.baseArrayLayer = 0;
+		blit.srcSubresource.layerCount = 1;
+		
+		blit.dstOffsets[0] = destStart;
+		blit.dstOffsets[1] = destEnd;
+		blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		blit.dstSubresource.mipLevel = 0;
+		blit.dstSubresource.baseArrayLayer = 0;
+		blit.dstSubresource.layerCount = 1;
+		
+		vkCmdBlitImage(commandBuffer,
+					image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+					staging_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+					1, &blit,
+					VK_FILTER_LINEAR);
+		image_memory_barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		image_memory_barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		image_memory_barrier.image = image;
+		vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0
+			, 0, nullptr, 0, nullptr, 1, &image_memory_barrier);
+		
+		image_memory_barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		image_memory_barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		image_memory_barrier.image = staging_image;
+		vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0
+			, 0, nullptr, 0, nullptr, 1, &image_memory_barrier);
+		VkBufferImageCopy buffer_image_copy {
+			.bufferOffset = 0,
+			.bufferRowLength = 0,
+			.bufferImageHeight = 0,
+			.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.imageSubresource.mipLevel = 0,
+			.imageSubresource.baseArrayLayer = 0,
+			.imageSubresource.layerCount = 1,
+			.imageOffset = {0, 0, 0},
+			.imageExtent = retExtent
+		};
+		
+		vkCmdCopyImageToBuffer(commandBuffer, staging_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, staging_buffer, 1, &buffer_image_copy);
+		devices->EndSingleTimeCommands(commandBuffer);
+		//	std::vector<VkCommandBuffer> raw_command_buffers = command_buffer.GetAll();
+		//	auto submit_info = VkTool::Initializer::GenerateSubmitInfo(raw_command_buffers);
+		//	VkTool::Wrapper::Fence fence(device);
+		//	device.vkQueueSubmit(graphics_queue, 1, &submit_info, fence.Get());
+		//	fence.Wait();
+		//	fence.Destroy();
+		std::vector<T> ret (retExtent.width * retExtent.height * retExtent.depth);
+//		const uint8_t *mapped_address = reinterpret_cast<const uint8_t *>(stagingAllocInfo.pMappedData);
+		memcpy(ret.data(), stagingAllocInfo.pMappedData, retSize);
+		//	lodepng::encode(filename, mapped_address, width, height);
+		//	staging_buffer.UnmapMemory();
+		//	vmaUnmapMemory(allocator, staging_buffer_allocation);
+			
+		vmaDestroyImage(devices->GetAllocator(), staging_image, staging_image_allocation);
+		vmaDestroyBuffer(devices->GetAllocator(), staging_buffer, staging_buffer_allocation);
+		return ret;
+	}
+	
 private:
 	std::shared_ptr<Devices> devices;
 	
