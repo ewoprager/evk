@@ -334,17 +334,17 @@ struct DescriptorSetImpl<TypePack<descriptor_ts...>, std::integer_sequence<uint3
 		size_t i = 0;
 		(void(layoutBindings[i++] = descriptor_t<indices>::layoutBinding), ...);
 		// binding flags
-		std::array<VkDescriptorBindingFlags, descriptorCount> flags{};
-		std::ranges::fill(flags, VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT);
-		const VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlags{
-			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
-			.pNext = nullptr,
-			.pBindingFlags = flags.data(),
-			.bindingCount = descriptorCount
-		};
+//		std::array<VkDescriptorBindingFlags, descriptorCount> flags{};
+//		std::ranges::fill(flags, VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT);
+//		const VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlags{
+//			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+//			.pNext = nullptr,
+//			.pBindingFlags = flags.data(),
+//			.bindingCount = descriptorCount
+//		};
 		const VkDescriptorSetLayoutCreateInfo layoutInfo{
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-			.pNext = &bindingFlags,
+//			.pNext = &bindingFlags,
 			.bindingCount = descriptorCount,
 			.pBindings = layoutBindings.data()
 		};
@@ -487,7 +487,7 @@ public:
 		// descriptor pool
 		const VkDescriptorPoolCreateInfo poolInfo{
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-			.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
+//			.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
 			.poolSizeCount = uniformCount,
 			.pPoolSizes = poolSizes.data(),
 			.maxSets = uint32_t(MAX_FRAMES_IN_FLIGHT * descriptorSetCount)
