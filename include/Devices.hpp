@@ -6,6 +6,13 @@
 
 namespace EVK {
 
+struct CommandEnvironment {
+	VkCommandBuffer commandBuffer;
+	uint32_t flight;
+	
+	operator VkCommandBuffer () const { return commandBuffer; }
+};
+
 class Devices {
 public:
 	Devices(const char *applicationName, std::vector<const char *> requiredExtensions, std::function<VkSurfaceKHR (VkInstance)> surfaceCreationFunction, const std::function<VkExtent2D ()> &_getExtentFunction);

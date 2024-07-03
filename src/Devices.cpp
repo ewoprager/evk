@@ -1,6 +1,7 @@
 #include <set>
 #include <fstream>
 #include <iostream>
+#include <format>
 
 #include <vma/vk_mem_alloc.h>
 
@@ -8,10 +9,10 @@
 
 static std::vector<char> ReadFile(const char *filename){
 	std::ifstream ifs(filename, std::ios::binary | std::ios::ate);
+	if(!ifs.is_open())
+		throw std::runtime_error(std::format("Could not open file '{}'", filename));
+	
 	std::ifstream::pos_type pos = ifs.tellg();
-
-	if(!pos)
-		return std::vector<char>{};
 
 	std::vector<char> result(pos);
 

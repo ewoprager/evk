@@ -421,20 +421,6 @@ void Interface::CreateFramebuffers(){
 		}
 	}
 }
-//
-//void Interface::ResizeSwapChainSizeMatchingBRPs(){
-//	if(swapChainSizeMatchedBRPs.empty()) return;
-//	
-//	const vec<2, uint32_t> swapChainSize = (vec<2, uint32_t>){swapChainExtent.width, swapChainExtent.height};
-//	
-//	for(int brpIndex : swapChainSizeMatchedBRPs){
-//		AllocateOrResizeBufferedRenderPass(brpIndex, swapChainSize);
-//	}
-//	
-//	for(std::shared_ptr<GraphicsPipeline> graphicsPipeline : graphicsPipelines){
-//		if(graphicsPipeline) graphicsPipeline->UpdateDescriptorSets();
-//	}
-//}
 
 void Interface::CleanUpSwapChain(){
 	vkDestroyImageView(devices->GetLogicalDevice(), depthImageView, nullptr);
@@ -452,7 +438,7 @@ void Interface::CleanUpSwapChain(){
 	}
 }
 
-std::optional<Interface::FrameInfo> Interface::BeginFrame(){
+std::optional<CommandEnvironment> Interface::BeginFrame(){
 	// waiting until previous frame has finished rendering
 	vkWaitForFences(devices->GetLogicalDevice(), 1, &inFlightFencesFlying[currentFrame], VK_TRUE, UINT64_MAX);
 	
@@ -483,9 +469,9 @@ std::optional<Interface::FrameInfo> Interface::BeginFrame(){
 		throw std::runtime_error("failed to begin recording command buffer!");
 	}
 	
-	return FrameInfo{commandBuffersFlying[currentFrame], currentFrame};
+	return CommandEnvironment{commandBuffersFlying[currentFrame], currentFrame};
 }
-void Interface::BeginFinalRenderPass(const VkClearColorValue &clearColour){
+void Interface::BeginSwapChainRenderPass(const VkClearColorValue &clearColour){
 	VkClearValue clearValues[2] = {};
 	clearValues[0].color = clearColour;
 	clearValues[1].depthStencil = {1.0f, 0};
@@ -520,9 +506,7 @@ void Interface::BeginFinalRenderPass(const VkClearColorValue &clearColour){
 	};
 	vkCmdSetScissor(commandBuffersFlying[currentFrame], 0, 1, &scissor);
 }
-void Interface::EndFinalRenderPassAndFrame(std::optional<VkPipelineStageFlags> stagesWaitForCompute){
-	vkCmdEndRenderPass(commandBuffersFlying[currentFrame]);
-	
+void Interface::EndFrame(std::optional<VkPipelineStageFlags> stagesWaitForCompute){
 	if(vkEndCommandBuffer(commandBuffersFlying[currentFrame]) != VK_SUCCESS){
 		throw std::runtime_error("failed to record command buffer!");
 	}
@@ -573,10 +557,8 @@ void Interface::EndFinalRenderPassAndFrame(std::optional<VkPipelineStageFlags> s
 	
 	currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
-Interface::FrameInfo Interface::BeginCompute(){
+CommandEnvironment Interface::BeginCompute(){
 	vkWaitForFences(devices->GetLogicalDevice(), 1, &computeInFlightFencesFlying[currentFrame], VK_TRUE, UINT64_MAX);
-
-//	updateUniformBuffer(currentFrame);
 
 	vkResetFences(devices->GetLogicalDevice(), 1, &computeInFlightFencesFlying[currentFrame]);
 
@@ -589,9 +571,9 @@ Interface::FrameInfo Interface::BeginCompute(){
 		throw std::runtime_error("failed to begin recording compute command buffer!");
 	}
 	
-	return FrameInfo{
-		.cb = computeCommandBuffersFlying[currentFrame],
-		.frame = currentFrame
+	return CommandEnvironment{
+		.commandBuffer = computeCommandBuffersFlying[currentFrame],
+		.flight = currentFrame
 	};
 }
 void Interface::EndCompute(){
@@ -609,130 +591,21 @@ void Interface::EndCompute(){
 	}
 }
 
-void Interface::CmdEndRenderPass(){
-	vkCmdEndRenderPass(commandBuffersFlying[currentFrame]);
-}
-
-//void Interface::CmdBindVertexBuffer(uint32_t binding, int index){
-//	if(!vertexBufferObjects[index]) throw std::runtime_error("Cannot bind vertex buffer; it hasn't been filled.");
-//	vkCmdBindVertexBuffers(commandBuffersFlying[currentFrame], binding, 1, &vertexBufferObjects[index]->bufferHandle, &vertexBufferObjects[index]->offset);
+//void Interface::CmdEndRenderPass(){
+//	vkCmdEndRenderPass(commandBuffersFlying[currentFrame]);
 //}
-//void Interface::CmdBindStorageBufferAsVertexBuffer(uint32_t binding, int index, const VkDeviceSize &offset){
-//	vkCmdBindVertexBuffers(commandBuffersFlying[currentFrame], binding, 1, &storageBufferObjects[index]->buffersFlying[currentFrame], &offset);
+//
+//void Interface::CmdDraw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance){
+//	vkCmdDraw(commandBuffersFlying[currentFrame], vertexCount, instanceCount, firstVertex, firstInstance);
 //}
-//void Interface::CmdBindIndexBuffer(int index, const VkIndexType &type){
-//	if(!indexBufferObjects[index]) throw std::runtime_error("Cannot bind index buffer; it hasn't been filled.");
-//	vkCmdBindIndexBuffer(commandBuffersFlying[currentFrame], indexBufferObjects[index]->bufferHandle, indexBufferObjects[index]->offset, type);
+//void Interface::CmdDrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance){
+//	vkCmdDrawIndexed(commandBuffersFlying[currentFrame], indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
 //}
-void Interface::CmdDraw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance){
-	vkCmdDraw(commandBuffersFlying[currentFrame], vertexCount, instanceCount, firstVertex, firstInstance);
-}
-void Interface::CmdDrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance){
-	vkCmdDrawIndexed(commandBuffersFlying[currentFrame], indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
-}
-void Interface::CmdSetDepthBias(float constantFactor, float clamp, float slopeFactor){
-	vkCmdSetDepthBias(commandBuffersFlying[currentFrame], constantFactor, clamp, slopeFactor);
-}
-void Interface::CmdDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ){
-	vkCmdDispatch(computeCommandBuffersFlying[currentFrame], groupCountX, groupCountY, groupCountZ);
-}
-
-//void Interface::CmdPipelineImageMemoryBarrier(bool graphicsOrCompute, int imageIndex, VkPipelineStageFlags srcStageMask, VkPipelineStageFlags dstStageMask, VkDependencyFlags dependencyFlags, VkAccessFlags srcAccessMask, VkAccessFlags dstAccessMask, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t srcQueueFamilyIndex, uint32_t dstQueueFamilyIndex, VkImageSubresourceRange subresourceRange){
-//	if(!textureImages[imageIndex]){
-//		throw std::runtime_error("Cannot create image memory barrier as image has not been created.");
-//	}
-//	TextureImage &imageRef = textureImages[imageIndex].value();
-//	
-//	const VkImageMemoryBarrier imageMemoryBarrier = {
-//		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-//		.oldLayout = oldLayout,
-//		.newLayout = newLayout,
-//		.image = imageRef.image,
-//		.subresourceRange = subresourceRange,
-//		.srcAccessMask = srcAccessMask,
-//		.dstAccessMask = dstAccessMask,
-//		.srcQueueFamilyIndex = srcQueueFamilyIndex,
-//		.dstQueueFamilyIndex = dstQueueFamilyIndex
-//	};
-//	vkCmdPipelineBarrier(graphicsOrCompute ? computeCommandBuffersFlying[currentFrame] : commandBuffersFlying[currentFrame],
-//						 srcStageMask, dstStageMask, dependencyFlags,
-//						 0, nullptr, 0, nullptr,
-//						 1, &imageMemoryBarrier);
+//void Interface::CmdSetDepthBias(float constantFactor, float clamp, float slopeFactor){
+//	vkCmdSetDepthBias(commandBuffersFlying[currentFrame], constantFactor, clamp, slopeFactor);
 //}
-//void Interface::CmdBeginBufferedRenderPass(int bufferedRenderPassIndex, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues){
-//	if(!bufferedRenderPasses[bufferedRenderPassIndex])
-//		throw std::runtime_error("Cannot begin buffered render pass; it hasn't been built.");
-//	BufferedRenderPass &ref = bufferedRenderPasses[bufferedRenderPassIndex].value();
-//	if(!ref.size)
-//		throw std::runtime_error("Cannot begin buffered render pass; it hasn't been allocated.");
-//	
-//	VkRenderPassBeginInfo renderPassBeginInfo{
-//		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-//		.renderPass = ref.renderPass,
-//		.framebuffer = ref.frameBuffersFlying[currentFrame],
-//		.renderArea = {{0, 0}, {ref.size->x, ref.size->y}},
-//		.clearValueCount = uint32_t(clearValues.size()),
-//		.pClearValues = clearValues.data()
-//	};
-//	vkCmdBeginRenderPass(commandBuffersFlying[currentFrame], &renderPassBeginInfo, subpassContents);
-//	
-//	const VkViewport viewport{
-//		.x = (float)renderPassBeginInfo.renderArea.offset.x,
-//		.y = (float)renderPassBeginInfo.renderArea.offset.y,
-//		.width = (float)renderPassBeginInfo.renderArea.extent.width,
-//		.height = (float)renderPassBeginInfo.renderArea.extent.height,
-//		.minDepth = 0.0f,
-//		.maxDepth = 1.0f
-//	};
-//	vkCmdSetViewport(commandBuffersFlying[currentFrame], 0, 1, &viewport);
-//	
-//	// can filter at rasterizer stage to change rendered rectangle within viewport
-//	VkRect2D scissor{
-//		.offset = renderPassBeginInfo.renderArea.offset,
-//		.extent = renderPassBeginInfo.renderArea.extent
-//	};
-//	vkCmdSetScissor(commandBuffersFlying[currentFrame], 0, 1, &scissor);
-//}
-//void Interface::CmdBeginLayeredBufferedRenderPass(int layeredBufferedRenderPassIndex, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues, int layer){
-//	if(!layeredBufferedRenderPasses[layeredBufferedRenderPassIndex])
-//		throw std::runtime_error("Cannot begin layered buffered render pass; it hasn't been created.");
-//	LayeredBufferedRenderPass &ref = layeredBufferedRenderPasses[layeredBufferedRenderPassIndex].value();
-//	
-//	VkRenderPassBeginInfo renderPassBeginInfo{
-//		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-//		.renderPass = ref.renderPass,
-//		.framebuffer = ref.layers[layer].frameBuffersFlying[currentFrame],
-//		.renderArea = {{0, 0}, {ref.width, ref.height}},
-//		.clearValueCount = uint32_t(clearValues.size()),
-//		.pClearValues = clearValues.data()
-//	};
-//	vkCmdBeginRenderPass(commandBuffersFlying[currentFrame], &renderPassBeginInfo, subpassContents);
-//	
-//	const VkViewport viewport{
-//		.x = (float)renderPassBeginInfo.renderArea.offset.x,
-//		.y = (float)renderPassBeginInfo.renderArea.offset.y,
-//		.width = (float)renderPassBeginInfo.renderArea.extent.width,
-//		.height = (float)renderPassBeginInfo.renderArea.extent.height,
-//		.minDepth = 0.0f,
-//		.maxDepth = 1.0f
-//	};
-//	vkCmdSetViewport(commandBuffersFlying[currentFrame], 0, 1, &viewport);
-//	
-//	// can filter at rasterizer stage to change rendered rectangle within viewport
-//	const VkRect2D scissor{
-//		.offset = renderPassBeginInfo.renderArea.offset,
-//		.extent = renderPassBeginInfo.renderArea.extent
-//	};
-//	vkCmdSetScissor(commandBuffersFlying[currentFrame], 0, 1, &scissor);
-//}
-
-//void Interface::BuildGraphicsPipeline(int index, const GraphicsPipelineBlueprint &blueprint){
-//	if(graphicsPipelines[index]) graphicsPipelines[index].reset();
-//	graphicsPipelines[index] = std::make_shared<GraphicsPipeline>(*this, blueprint);
-//}
-//void Interface::BuildComputePipeline(int index, const ComputePipelineBlueprint &blueprint){
-//	if(computePipelines[index]) computePipelines[index].reset();
-//	computePipelines[index] = std::make_shared<ComputePipeline>(*this, blueprint);
+//void Interface::CmdDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ){
+//	vkCmdDispatch(computeCommandBuffersFlying[currentFrame], groupCountX, groupCountY, groupCountZ);
 //}
 
 /*

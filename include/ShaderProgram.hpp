@@ -773,7 +773,7 @@ public:
 	// Set which descriptor sets are bound for subsequent render calls
 	template <uint32_t first=0, uint32_t number=0>
 	[[nodiscard]]
-	bool CmdBindDescriptorSets(VkCommandBuffer commandBuffer, uint32_t flight, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) {
+	bool CmdBindDescriptorSets(const CommandEnvironment &commandEnvironment, const std::vector<int> &dynamicOffsetNumbers=std::vector<int>()) {
 		constexpr uint32_t numberUse = number < 1 ? descriptorSetCount - first : number;
 		
 		// making sure all descriptor sets are valid
@@ -781,14 +781,14 @@ public:
 			return false;
 		}
 		
-		const VkDescriptorSet *const firstDescriptorSet = uniforms.DescriptorSetsStart(flight);
+		const VkDescriptorSet *const firstDescriptorSet = uniforms.DescriptorSetsStart(commandEnvironment.flight);
 		
 		// binding, optionally using dynamic offsets
 		if(dynamicOffsetNumbers.empty()){
-			vkCmdBindDescriptorSets(commandBuffer, bindPoint, layout, first, numberUse, firstDescriptorSet, 0, nullptr);
+			vkCmdBindDescriptorSets(commandEnvironment.commandBuffer, bindPoint, layout, first, numberUse, firstDescriptorSet, 0, nullptr);
 		} else {
 			const std::vector<uint32_t> dynamicOffsets = uniforms.template GetDynamicOffsets<first, numberUse>(dynamicOffsetNumbers);
-			vkCmdBindDescriptorSets(commandBuffer, bindPoint, layout, first, numberUse, firstDescriptorSet, uint32_t(dynamicOffsets.size()), dynamicOffsets.data());
+			vkCmdBindDescriptorSets(commandEnvironment.commandBuffer, bindPoint, layout, first, numberUse, firstDescriptorSet, uint32_t(dynamicOffsets.size()), dynamicOffsets.data());
 		}
 		return true;
 	}

@@ -353,22 +353,9 @@ BufferedRenderPass::BufferedRenderPass(std::shared_ptr<Devices> _devices,
 									   const VkRenderPassCreateInfo *const pRenderPassCI)
 : devices(std::move(_devices)) {
 	
-//	size = std::optional<vec<2, uint32_t>>();
-	
 	if(vkCreateRenderPass(devices->GetLogicalDevice(), pRenderPassCI, nullptr, &renderPass) != VK_SUCCESS){
 		throw std::runtime_error("Failed to create render pass!");
 	}
-	
-//	targetTextureImageIndices = blueprint.targetTextureImageIndices;
-	
-//	const std::vector<int>::iterator it = std::find(swapChainSizeMatchedBRPs.begin(), swapChainSizeMatchedBRPs.end(), index);
-//	if(blueprint.resizeWithSwapChain != (it != swapChainSizeMatchedBRPs.end())){
-//		if(blueprint.resizeWithSwapChain){
-//			swapChainSizeMatchedBRPs.push_back(index);
-//		} else {
-//			swapChainSizeMatchedBRPs.erase(it);
-//		}
-//	}
 }
 
 bool BufferedRenderPass::SetImages(const std::vector<std::shared_ptr<TextureImage>> &images){

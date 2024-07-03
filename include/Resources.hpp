@@ -177,8 +177,8 @@ public:
 	
 	[[nodiscard]] bool Fill(const std::byte *data);
 	
-	void CmdBindAsVertexBuffer(VkCommandBuffer commandBuffer, uint32_t flight, uint32_t binding, const VkDeviceSize &offset){
-		vkCmdBindVertexBuffers(commandBuffer, binding, 1, &buffersFlying[flight], &offset);
+	void CmdBindAsVertexBuffer(const CommandEnvironment &commandEnvironment, uint32_t binding, const VkDeviceSize &offset){
+		vkCmdBindVertexBuffers(commandEnvironment.commandBuffer, binding, 1, &buffersFlying[commandEnvironment.flight], &offset);
 	}
 	
 	[[nodiscard]] VkBuffer BufferFlying(uint32_t flight) const { return buffersFlying[flight]; }
@@ -416,7 +416,7 @@ public:
 	}
 	
 	[[nodiscard]]
-	bool CmdBegin(VkCommandBuffer commandBuffer, uint32_t flight, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues){
+	bool CmdBegin(const CommandEnvironment &commandEnvironment, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues){
 		if(!targets){
 			std::cout << "Cannot begin buffered render pass; no targets.\n";
 			return false;
@@ -424,12 +424,12 @@ public:
 		const VkRenderPassBeginInfo renderPassBeginInfo{
 			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
 			.renderPass = renderPass,
-			.framebuffer = targets->frameBuffersFlying[flight],
+			.framebuffer = targets->frameBuffersFlying[commandEnvironment.flight],
 			.renderArea = {{0, 0}, {targets->images[0]->Extent().width, targets->images[0]->Extent().height}},
 			.clearValueCount = uint32_t(clearValues.size()),
 			.pClearValues = clearValues.data()
 		};
-		vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, subpassContents);
+		vkCmdBeginRenderPass(commandEnvironment.commandBuffer, &renderPassBeginInfo, subpassContents);
 		
 		const VkViewport viewport{
 			.x = (float)renderPassBeginInfo.renderArea.offset.x,
@@ -439,12 +439,12 @@ public:
 			.minDepth = 0.0f,
 			.maxDepth = 1.0f
 		};
-		vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+		vkCmdSetViewport(commandEnvironment.commandBuffer, 0, 1, &viewport);
 		
 		// can filter at rasterizer stage to change rendered rectangle within viewport
 		const VkRect2D scissor = renderPassBeginInfo.renderArea;
 		
-		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+		vkCmdSetScissor(commandEnvironment.commandBuffer, 0, 1, &scissor);
 		return true;
 	}
 	
@@ -494,7 +494,7 @@ public:
 	}
 	
 	[[nodiscard]]
-	bool CmdBegin(VkCommandBuffer commandBuffer, uint32_t flight, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues, int layer){
+	bool CmdBegin(const CommandEnvironment &commandEnvironment, const VkSubpassContents &subpassContents, const std::vector<VkClearValue> &clearValues, int layer){
 		if(!targets){
 			std::cout << "Cannot begin buffered render pass; no targets.\n";
 			return false;
@@ -502,12 +502,12 @@ public:
 		const VkRenderPassBeginInfo renderPassBeginInfo{
 			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
 			.renderPass = renderPass,
-			.framebuffer = targets->layers[layer].frameBuffersFlying[flight],
+			.framebuffer = targets->layers[layer].frameBuffersFlying[commandEnvironment.flight],
 			.renderArea = {{0, 0}, {targets->image->Extent().width, targets->image->Extent().height}},
 			.clearValueCount = uint32_t(clearValues.size()),
 			.pClearValues = clearValues.data()
 		};
-		vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, subpassContents);
+		vkCmdBeginRenderPass(commandEnvironment.commandBuffer, &renderPassBeginInfo, subpassContents);
 		
 		const VkViewport viewport{
 			.x = (float)renderPassBeginInfo.renderArea.offset.x,
@@ -517,12 +517,12 @@ public:
 			.minDepth = 0.0f,
 			.maxDepth = 1.0f
 		};
-		vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+		vkCmdSetViewport(commandEnvironment.commandBuffer, 0, 1, &viewport);
 		
 		// can filter at rasterizer stage to change rendered rectangle within viewport
 		const VkRect2D scissor = renderPassBeginInfo.renderArea;
 		
-		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+		vkCmdSetScissor(commandEnvironment.commandBuffer, 0, 1, &scissor);
 		
 		return true;
 	}

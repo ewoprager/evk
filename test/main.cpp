@@ -287,21 +287,23 @@ int main(int argc, char *argv[]){
 		
 		const float timeS = 0.001f * static_cast<float>(time);
 		
-		if(std::optional<EVK::Interface::FrameInfo> fi = interface->BeginFrame(); fi.has_value()){
-			updateFunction(timeS, fi->frame);
+		if(std::optional<EVK::CommandEnvironment> ci = interface->BeginFrame(); ci.has_value()){
+			updateFunction(timeS, ci->flight);
 			
-			interface->BeginFinalRenderPass({{0.01f, 0.01f, 0.01f, 1.0f}});
+			interface->BeginSwapChainRenderPass({{0.01f, 0.01f, 0.01f, 1.0f}});
 			
-			mainInstancedPipeline->CmdBind(fi->cb);
-			if(mainInstancedPipeline->CmdBindDescriptorSets<0, 1>(fi->cb, fi->frame) && vbo->CmdBind(fi->cb, 0)){
+			mainInstancedPipeline->CmdBind(ci.value());
+			if(mainInstancedPipeline->CmdBindDescriptorSets<0, 1>(ci.value()) && vbo->CmdBind(ci.value(), 0)){
 				Pipeline::VertexShader::PushConstantType pcs = pcsFunction(timeS);
-				mainInstancedPipeline->CmdPushConstants<0>(fi->cb, &pcs);
-				interface->CmdDraw(3);
+				mainInstancedPipeline->CmdPushConstants<0>(ci.value(), &pcs);
+				vkCmdDraw(ci.value(), 3, 1, 0, 0);
 			} else {
 				std::cout << "Failing to draw.\n";
 			}
 			
-			interface->EndFinalRenderPassAndFrame();
+			vkCmdEndRenderPass(ci.value());
+			
+			interface->EndFrame();
 		} else {
 			std::cout << "Failed to begin frame.\n";
 		}
