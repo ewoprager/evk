@@ -272,6 +272,11 @@ public:
 	SwapChainSupportDetails QuerySwapChainSupport() const;
 	
 	VkExtent2D GetSurfaceExtent() const { return getExtentFunction(); }
+	VkInstance GetVkInstance() const { return instance; }
+	VkPhysicalDevice GetVkPhysicalDevice() const { return physicalDevice; }
+	uint32_t GetQueueFamilyIndex() const { queueFamilyIndices[0]; }
+	VkDevice GetVkLogicalDevice() const { return logicalDevice; }
+	VkQueue GetGraphicsQueue() const { return graphicsQueue; }
 	
 private:
 	void CreateInstance(const char *applicationName, std::vector<const char *> requiredExtensions);

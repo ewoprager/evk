@@ -528,40 +528,56 @@ VkImageView Devices::CreateImageView(const VkImageViewCreateInfo &imageViewCI/*V
 	return ret;
 }
 
-void Devices::CreateAndFillDeviceLocalBuffer(VkBuffer &bufferHandle, VmaAllocation &allocation, void *data, const VkDeviceSize &size, const VkBufferUsageFlags &usageFlags) const {
+void Devices::CreateAndFillDeviceLocalBuffer(VkBuffer &bufferHandle, VmaAllocation &allocation, const std::vector<DeviceMemory> &memory, const VkBufferUsageFlags &usageFlags) const {
+	VkDeviceSize totalSize = 0;
+	for(const DeviceMemory &dm : memory){
+		totalSize += dm.size;
+	}
 	// creating staging buffer
 	VkBuffer stagingBuffer;
 	VmaAllocation stagingAllocation;
 	VmaAllocationInfo stagingAllocInfo;
-	CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingAllocation, &stagingAllocInfo);
+	CreateBuffer(totalSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingAllocation, &stagingAllocInfo);
 	
-	memcpy(stagingAllocInfo.pMappedData, data, (size_t)size);
+	VkDeviceSize offset = 0;
+	for(const DeviceMemory &dm : memory){
+		memcpy(static_cast<void *>((char *)stagingAllocInfo.pMappedData + offset), dm.ptr, (size_t)dm.size);
+		offset += dm.size;
+	}
 	vmaFlushAllocation(allocator, stagingAllocation, 0, VK_WHOLE_SIZE);
 	
 	// creating the new vertex buffer
-	CreateBuffer(size, // size
+	CreateBuffer(totalSize, // size
 				 VK_BUFFER_USAGE_TRANSFER_DST_BIT | usageFlags, // usage
 				 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, // properties; device local means we generally can't use 'vkMapMemory', but it is quicker to access by the GPU
 				 bufferHandle, // buffer handle output
 				 allocation); // buffer memory handle output
 	// copying the contents of the staging buffer into the vertex buffer
-	CopyBuffer(stagingBuffer, bufferHandle, size);
+	CopyBuffer(stagingBuffer, bufferHandle, totalSize);
 	// cleaning up staging buffer
 	vmaDestroyBuffer(allocator, stagingBuffer, stagingAllocation);
 }
 
-void Devices::FillExistingDeviceLocalBuffer(VkBuffer bufferHandle, void *data, const VkDeviceSize &size) const {
+void Devices::FillExistingDeviceLocalBuffer(VkBuffer bufferHandle, const std::vector<DeviceMemory> &memory) const {
+	VkDeviceSize totalSize = 0;
+	for(const DeviceMemory &dm : memory){
+		totalSize += dm.size;
+	}
 	// creating staging buffer
 	VkBuffer stagingBuffer;
 	VmaAllocation stagingAllocation;
 	VmaAllocationInfo stagingAllocInfo;
-	CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingAllocation, &stagingAllocInfo);
+	CreateBuffer(totalSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingAllocation, &stagingAllocInfo);
 	
-	memcpy(stagingAllocInfo.pMappedData, data, (size_t)size);
+	VkDeviceSize offset = 0;
+	for(const DeviceMemory &dm : memory){
+		memcpy(static_cast<void *>((char *)stagingAllocInfo.pMappedData + offset), dm.ptr, (size_t)dm.size);
+		offset += dm.size;
+	}
 	vmaFlushAllocation(allocator, stagingAllocation, 0, VK_WHOLE_SIZE);
 	
 	// copying the contents of the staging buffer into the vertex buffer
-	CopyBuffer(stagingBuffer, bufferHandle, size);
+	CopyBuffer(stagingBuffer, bufferHandle, totalSize);
 	// cleaning up staging buffer
 	vmaDestroyBuffer(allocator, stagingBuffer, stagingAllocation);
 }

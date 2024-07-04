@@ -569,6 +569,8 @@ public:
 		return std::get<index>(descriptorSets);
 	}
 	
+	VkDescriptorPool GetVkDescriptorPool() const { return descriptorPool; }
+	
 private:
 	std::shared_ptr<Devices> devices;
 	
@@ -817,6 +819,9 @@ public:
 	template <uint32_t index>
 	uniforms_t::template descriptorSet_t<index> &iDescriptorSet(){ return uniforms.template iDescriptorSet<index>(); }
 	
+	VkDescriptorPool GetVkDescriptorPool() const { return uniforms.GetVkDescriptorPool(); }
+	VkPipeline GetVkPipeline() const { return pipeline; }
+	
 protected:
 	std::shared_ptr<Devices> devices;
 	
@@ -971,6 +976,9 @@ public:
 	template <uint32_t index>
 	uniforms_t::template descriptorSet_t<index> &iDescriptorSet(){ return uniforms.template iDescriptorSet<index>(); }
 	
+	VkDescriptorPool GetVkDescriptorPool() const { return uniforms.GetVkDescriptorPool(); }
+	VkPipeline GetVkPipeline() const { return pipeline; }
+	
 protected:
 	std::shared_ptr<Devices> devices;
 	
@@ -1088,6 +1096,9 @@ public:
 	// Get the handle of a descriptor set
 	template <uint32_t index>
 	uniforms_t::template descriptorSet_t<index> &iDescriptorSet(){ return uniforms.template iDescriptorSet<index>(); }
+	
+	VkDescriptorPool GetVkDescriptorPool() const { return uniforms.GetVkDescriptorPool(); }
+	VkPipeline GetVkPipeline() const { return pipeline; }
 	
 protected:
 	std::shared_ptr<Devices> devices;

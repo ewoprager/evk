@@ -24,6 +24,13 @@ public:
 	Devices &operator=(Devices &&) = default;
 	~Devices();
 	
+	// Structures
+	// -----
+	struct DeviceMemory {
+		void *ptr;
+		VkDeviceSize size;
+	};
+	
 	// Tools
 	// -----
 	uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
@@ -32,7 +39,7 @@ public:
 	SwapChainSupportDetails QuerySwapChainSupport() const;
 	VkCommandBuffer BeginSingleTimeCommands() const;
 	void EndSingleTimeCommands(VkCommandBuffer commandBuffer) const;
-	void FillExistingDeviceLocalBuffer(VkBuffer bufferHandle, void *data, const VkDeviceSize &size) const;
+	void FillExistingDeviceLocalBuffer(VkBuffer bufferHandle, const std::vector<DeviceMemory> &memory) const;
 	void GenerateMipmaps(VkImage image, VkFormat imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels) const;
 	void CopyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) const;
 	void TransitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, VkImageSubresourceRange subResourceRange) const;
@@ -44,7 +51,7 @@ public:
 	void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer &buffer, VmaAllocation &allocation, VmaAllocationInfo *allocationInfoDst=nullptr) const;
 	void CreateImage(const VkImageCreateInfo &imageCI, VkMemoryPropertyFlags properties, VkImage &image, VmaAllocation &allocation) const;
 	VkImageView CreateImageView(const VkImageViewCreateInfo &imageViewCI) const;
-	void CreateAndFillDeviceLocalBuffer(VkBuffer &bufferHandle, VmaAllocation &allocation, void *data, const VkDeviceSize &size, const VkBufferUsageFlags &usageFlags) const;
+	void CreateAndFillDeviceLocalBuffer(VkBuffer &bufferHandle, VmaAllocation &allocation, const std::vector<DeviceMemory> &memory, const VkBufferUsageFlags &usageFlags) const;
 	
 	// Getters
 	// -----
@@ -59,6 +66,8 @@ public:
 #endif
 	VkExtent2D GetSurfaceExtent() const { return getExtentFunction(); }
 	const VmaAllocator &GetAllocator() const { return allocator; }
+	const VkInstance &GetInstance() const { return instance; }
+	const VkPhysicalDevice &GetPhysicalDevice() const { return physicalDevice; }
 	const VkDevice &GetLogicalDevice() const { return logicalDevice; }
 	const QueueFamilyIndices &GetQueueFamilyIndices() const { return queueFamilyIndices; }
 	const VkCommandPool &GetCommandPool() const { return commandPool; }

@@ -48,6 +48,7 @@ public:
 	[[nodiscard]] const uint32_t &GetExtentWidth() const { return swapChainExtent.width; }
 	[[nodiscard]] const uint32_t &GetExtentHeight() const { return swapChainExtent.height; }
 	
+	
 	// Misc
 	// -----
 	void FramebufferResizeCallback(){ framebufferResized = true; }

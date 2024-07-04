@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.24)
 set(CMAKE_INSTALL_PREFIX "/Users/eprager/local")
 
-file(GLOB_RECURSE HEADERS
+file(GLOB HEADERS
 	 RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
 	 "include/*.hpp"
 	 )
 
-file(GLOB_RECURSE SOURCES
+file(GLOB SOURCES
 	 RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
 	 "src/*.cpp"
 	 )

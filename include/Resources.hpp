@@ -17,7 +17,7 @@ public:
 	
 	[[nodiscard]] bool Filled() const { return contents.has_value(); }
 	
-	void Fill(void *vertices, const VkDeviceSize &size, const VkDeviceSize &offset=0);
+	void Fill(const std::vector<Devices::DeviceMemory> &vertexMemory, const VkDeviceSize &offset=0);
 	
 	[[nodiscard]]
 	bool CmdBind(VkCommandBuffer commandBuffer, uint32_t binding){
@@ -52,7 +52,7 @@ public:
 	
 	[[nodiscard]] bool Filled() const { return contents.has_value(); }
 	
-	void Fill(uint32_t *indices, size_t indexCount, const VkDeviceSize &offset=0);
+	void Fill(size_t indexSize, const std::vector<Devices::DeviceMemory> &indexMemory, const VkDeviceSize &offset=0);
 	
 	[[nodiscard]]
 	bool CmdBind(VkCommandBuffer commandBuffer, VkIndexType type){

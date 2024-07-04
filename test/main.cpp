@@ -247,7 +247,7 @@ int main(int argc, char *argv[]){
 	
 	std::shared_ptr<EVK::VertexBufferObject> vbo = std::make_shared<EVK::VertexBufferObject>(devices);
 	
-	vbo->Fill((void *)(vertices), sizeof(vertices), 0);
+	vbo->Fill({{(void *)(vertices), sizeof(vertices)}}, 0);
 	
 	const std::function<mat<4, 4>()> projFunction = [&]() -> mat<4, 4> {
 		return mat<4, 4>::PerspectiveProjection(M_PI*0.25f, (float)interface->GetExtentWidth() / (float)interface->GetExtentHeight(), 0.1f, 10.0f);

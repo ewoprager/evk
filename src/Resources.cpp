@@ -6,11 +6,15 @@
 
 namespace EVK {
 
-void VertexBufferObject::Fill(void *vertices, const VkDeviceSize &size, const VkDeviceSize &offset){
+void VertexBufferObject::Fill(const std::vector<Devices::DeviceMemory> &vertexMemory, const VkDeviceSize &offset){
+	size_t totalSize = 0;
+	for(const Devices::DeviceMemory &dm : vertexMemory){
+		totalSize += dm.size;
+	}
 	// destroying old vertex buffer if it exists
 	if(contents){
-		if(contents->size == size){
-			devices->FillExistingDeviceLocalBuffer(contents->bufferHandle, vertices, size);
+		if(contents->size == totalSize){
+			devices->FillExistingDeviceLocalBuffer(contents->bufferHandle, vertexMemory);
 			contents->offset = offset;
 			return;
 		} else {
@@ -19,9 +23,9 @@ void VertexBufferObject::Fill(void *vertices, const VkDeviceSize &size, const Vk
 	}
 	
 	contents = Contents();
-	devices->CreateAndFillDeviceLocalBuffer(contents->bufferHandle, contents->allocation, vertices, size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+	devices->CreateAndFillDeviceLocalBuffer(contents->bufferHandle, contents->allocation, vertexMemory, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 	contents->offset = offset;
-	contents->size = size;
+	contents->size = totalSize;
 }
 void VertexBufferObject::CleanUpContents(){
 	if(!contents){
@@ -31,11 +35,15 @@ void VertexBufferObject::CleanUpContents(){
 	contents.reset();
 }
 
-void IndexBufferObject::Fill(uint32_t *indices, size_t indexCount, const VkDeviceSize &offset){
+void IndexBufferObject::Fill(size_t indexSize, const std::vector<Devices::DeviceMemory> &indexMemory, const VkDeviceSize &offset){
+	uint32_t indexCount = 0;
+	for(const Devices::DeviceMemory &dm : indexMemory){
+		indexCount += dm.size / indexSize;
+	}
 	// destroying old vertex buffer if it exists
 	if(contents){
 		if(contents->indexCount == indexCount){
-			devices->FillExistingDeviceLocalBuffer(contents->bufferHandle, indices, VkDeviceSize(indexCount * sizeof(int32_t)));
+			devices->FillExistingDeviceLocalBuffer(contents->bufferHandle, indexMemory);
 			contents->offset = offset;
 			return;
 		} else {
@@ -44,9 +52,9 @@ void IndexBufferObject::Fill(uint32_t *indices, size_t indexCount, const VkDevic
 	}
 	
 	contents = Contents();
-	devices->CreateAndFillDeviceLocalBuffer(contents->bufferHandle, contents->allocation, indices, VkDeviceSize(indexCount * sizeof(int32_t)), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+	devices->CreateAndFillDeviceLocalBuffer(contents->bufferHandle, contents->allocation, indexMemory, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 	contents->offset = offset;
-	contents->indexCount = uint32_t(indexCount);
+	contents->indexCount = indexCount;
 }
 void IndexBufferObject::CleanUpContents(){
 	if(!contents){
@@ -74,7 +82,7 @@ StorageBufferObject::StorageBufferObject(std::shared_ptr<Devices> _devices,
 
 bool StorageBufferObject::Fill(const std::byte *data){
 	for(int i=0; i<MAX_FRAMES_IN_FLIGHT; ++i){
-		devices->FillExistingDeviceLocalBuffer(buffersFlying[i], (void *)(data), size);
+		devices->FillExistingDeviceLocalBuffer(buffersFlying[i], {{(void *)(data), size}});
 	}
 	return true;
 }
