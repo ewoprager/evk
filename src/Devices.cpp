@@ -156,7 +156,8 @@ static void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMesse
 Devices::Devices(const char *applicationName,
 				 std::vector<const char *> requiredExtensions,
 				 std::function<VkSurfaceKHR (VkInstance)> surfaceCreationFunction,
-				 const std::function<VkExtent2D ()> &_getExtentFunction)
+				 const std::function<VkExtent2D ()> &_getExtentFunction,
+				 VkPhysicalDeviceFeatures gpuFeatures)
 : getExtentFunction(_getExtentFunction) {
 	
 	// -----
@@ -252,17 +253,16 @@ Devices::Devices(const char *applicationName,
 		}
 		
 		// we specify features we'll be using here, like geometry shaders and anisotrophic filtering:
-		VkPhysicalDeviceFeatures deviceFeatures{};
-		deviceFeatures.samplerAnisotropy = VK_TRUE;
-		//deviceFeatures.shaderSampledImageArrayDynamicIndexing = VK_TRUE; // ? added to this to try fix textures, didn't help
-		//deviceFeatures.shaderUniformBufferArrayDynamicIndexing = VK_TRUE; // ? added this because it looks like I should (dynamic ubos worked without it)
+		gpuFeatures.samplerAnisotropy = VK_TRUE;
+		//gpuFeatures.shaderSampledImageArrayDynamicIndexing = VK_TRUE; // ? added to this to try fix textures, didn't help
+		//gpuFeatures.shaderUniformBufferArrayDynamicIndexing = VK_TRUE; // ? added this because it looks like I should (dynamic ubos worked without it)
 		
 		VkDeviceCreateInfo createInfo {
 			.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
 			.queueCreateInfoCount = QUEUE_FAMILIES_N,
 			.pQueueCreateInfos = queueCreateInfos,
 			.enabledLayerCount = 0,
-			.pEnabledFeatures = &deviceFeatures,
+			.pEnabledFeatures = &gpuFeatures,
 			.enabledExtensionCount = uint32_t(deviceExtensions.size()),
 			.ppEnabledExtensionNames = deviceExtensions.data()
 		};
